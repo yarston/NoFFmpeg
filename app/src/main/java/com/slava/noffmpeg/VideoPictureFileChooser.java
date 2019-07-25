@@ -14,8 +14,8 @@ import java.util.List;
 
 class VideoPictureFileChooser {
 
-    private String mVideoFileName;
-    private List<String> mImageFileNames = new ArrayList<>();
+    private String mVideoFilePath;
+    private List<String> mImageFilePathes = new ArrayList<>();
 
     void chooseVideo(Activity activity) {
         Intent intent = new Intent(activity, VideoPickActivity.class);
@@ -32,26 +32,34 @@ class VideoPictureFileChooser {
     void processResult(int requestCode, Intent intent) {
         switch (requestCode) {
             case Constant.REQUEST_CODE_PICK_IMAGE:
-                mImageFileNames.clear();
+                mImageFilePathes.clear();
                 ArrayList<ImageFile> listImages = intent.getParcelableArrayListExtra(Constant.RESULT_PICK_IMAGE);
                 if (listImages != null)
                     for (ImageFile f : listImages)
-                        mImageFileNames.add(f.getPath());
+                        mImageFilePathes.add(f.getPath());
                 break;
             case Constant.REQUEST_CODE_PICK_VIDEO:
                 ArrayList<VideoFile> listVideos = intent.getParcelableArrayListExtra(Constant.RESULT_PICK_VIDEO);
                 if (listVideos != null && !listVideos.isEmpty())
-                    mVideoFileName = listVideos.get(0).getPath();
+                    mVideoFilePath = listVideos.get(0).getPath();
         }
     }
 
     String getStatus() {
         StringBuilder builder = new StringBuilder("selected videos:")
-                .append(mVideoFileName == null ? 0 : 1)
-                .append(" images: ").append(mImageFileNames.size()).append("\n");
-        if(mVideoFileName != null) builder.append(mVideoFileName).append("\n");
-        for(String s : mImageFileNames) builder.append(s).append("\n");
+                .append(mVideoFilePath == null ? 0 : 1)
+                .append(" images: ").append(mImageFilePathes.size()).append("\n");
+        if(mVideoFilePath != null) builder.append(mVideoFilePath).append("\n");
+        for(String s : mImageFilePathes) builder.append(s).append("\n");
         return builder.toString();
+    }
+
+    String getVideoPath() {
+        return mVideoFilePath;
+    }
+
+    List<String> getImagePathes() {
+        return mImageFilePathes;
     }
 }
 
