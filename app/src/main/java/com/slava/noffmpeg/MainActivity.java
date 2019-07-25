@@ -5,31 +5,35 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Environment;
-import android.util.Log;
+import android.widget.Button;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 
-import lib.folderpicker.FolderPicker;
+import butterknife.BindView;
+import butterknife.ButterKnife;
 
 public class MainActivity extends AppCompatActivity {
 
-    int FOLDERPICKER_CODE = 1;
+    VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
+
+    @BindView(R.id.btn_video) Button mChooseVideo;
+    @BindView(R.id.btn_images) Button mChooseImages;
+    @BindView(R.id.btn_process) Button mProcess;
+    @BindView(R.id.progressBar) ProgressBar mProgress;
+    @BindView(R.id.textStatus) TextView mStatus;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Intent intent = new Intent(this, FolderPicker.class);
-        //To show a custom title
-        intent.putExtra("title", "Select file to upload");
-        intent.putExtra("location", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES).getAbsolutePath());
-        intent.putExtra("pickFiles", true);
-        startActivityForResult(intent, FOLDERPICKER_CODE);
+        ButterKnife.bind(this);
+        mChooseVideo.setOnClickListener(v -> mFileChooser.chooseVideo(this));
+        mChooseImages.setOnClickListener(v -> mFileChooser.chooseImages(this));
+        mStatus.setText(mFileChooser.getStatus());
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        if (requestCode == FOLDERPICKER_CODE && resultCode == Activity.RESULT_OK) {
-            String folderLocation = intent.getExtras().getString("data");
-            Log.i( "folderLocation", folderLocation );
-        }
+        if (resultCode == Activity.RESULT_OK) mFileChooser.processResult(requestCode, intent);
+        mStatus.setText(mFileChooser.getStatus());
     }
 }
