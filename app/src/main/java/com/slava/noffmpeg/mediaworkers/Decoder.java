@@ -55,6 +55,11 @@ public class Decoder {
         return new Size(mFormat.getInteger(MediaFormat.KEY_WIDTH), mFormat.getInteger(MediaFormat.KEY_HEIGHT));
     }
 
+    @Nullable
+    public MediaFormat getFormat() {
+        return mFormat;
+    }
+
     public boolean prepare(Surface surface, Runnable callback) {
         mCallback = callback;
         if (mFormat == null) return false;
@@ -96,7 +101,7 @@ public class Decoder {
         }
 
         int outIndex = mDecoder.dequeueOutputBuffer(mInfo, TIMEOUT_US);
-        if((mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) mIsReady = false;
+        if ((mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) mIsReady = false;
         switch (outIndex) {
             case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
                 mOutputBuffers = mDecoder.getOutputBuffers();
@@ -109,5 +114,12 @@ public class Decoder {
                 if (mCallback != null) mCallback.run();
                 break;
         }
+    }
+
+    public void release() {
+        if (mDecoder == null) return;
+        mDecoder.stop();
+        mDecoder.release();
+        mDecoder = null;
     }
 }

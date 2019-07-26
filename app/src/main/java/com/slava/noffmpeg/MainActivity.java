@@ -50,8 +50,8 @@ public class MainActivity extends AppCompatActivity {
         Decoder decoder = new Decoder(mFileChooser.getVideoPath());
         Size size = decoder.getSize();
         if(size == null) return;
-        Log.v("Decoder", "size = " + size.width + " x " + size.heigth);
-        Encoder encoder = new Encoder("out.mp4", size);
+        Log.v("Decoder", "size = " + size.width + " x " + size.height);
+        Encoder encoder = new Encoder("out.mp4", size, decoder.getFormat());
         Surface paintSurface = encoder.getSurface();
         //if(paintSurface == null) return;
         AtomicInteger nFrames = new AtomicInteger();
@@ -66,17 +66,19 @@ public class MainActivity extends AppCompatActivity {
         decoder.prepare(paintSurface, () -> {
             processor.process(paintSurface);
             mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
-            encoder.commit();
+            //encoder.encodeFrame();
             Log.v("Decoder", "frame " + nFrames);
         });
-        while (decoder.haveFrame()) decoder.decodeFrame();
+        /*while (decoder.haveFrame()) decoder.decodeFrame();
+        decoder.release();
+        encoder.release();
         runOnUiThread(() -> {
             mStatus.setText(String.format("completed in %.2f sec", (System.currentTimeMillis() - startTime) * 0.001f));
             mChooseVideo.setEnabled(true);
             mChooseImages.setEnabled(true);
             mProcess.setEnabled(true);
             mProgress.setProgress(mProgress.getMax());
-        });
+        });*/
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
