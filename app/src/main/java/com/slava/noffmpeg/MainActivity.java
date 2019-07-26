@@ -30,6 +30,9 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 
 import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB;
+import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB_C;
+import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB_Java;
+import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB_Java2;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -88,13 +91,16 @@ public class MainActivity extends AppCompatActivity {
 
         });
 
+        Bitmap bmp = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888);
+
         decoder.prepare(null, () -> {
 
             Image img = decoder.getOutputImage();
             if(img != null)  {
                 Canvas canvas = surface.lockCanvas(new Rect(0, 0, size.width, size.height));
-                //Bitmap bmp = YUV_420_888_toRGB(this, img, size.width, size.height);
-                //canvas.drawBitmap(bmp, 0, 0, new Paint());
+                YUV_420_888_toRGB_C(bmp, img, size.width, size.height);
+                //Bitmap bmp = YUV_420_888_toRGB_Java2(this, img, size.width, size.height);
+                canvas.drawBitmap(bmp, 0, 0, new Paint());
                 img.close();
                 surface.unlockCanvasAndPost(canvas);
             } else {
