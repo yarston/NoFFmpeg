@@ -1,8 +1,10 @@
 package com.slava.noffmpeg.mediaworkers;
 
+import android.media.Image;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.util.Log;
 import android.view.Surface;
 
 import androidx.annotation.Nullable;
@@ -24,6 +26,7 @@ public class Decoder {
     private ByteBuffer[] mOutputBuffers;
     private Runnable mCallback;
     private boolean mIsReady = false;
+    private Image mOutputImage;
 
     public Decoder(String videoPath) {
         mVideoPath = videoPath;
@@ -52,6 +55,7 @@ public class Decoder {
     @Nullable
     public Size getSize() {
         if (mFormat == null) return null;
+        Log.v("decodeFrame", "size " + mFormat.getInteger(MediaFormat.KEY_WIDTH) + " " + mFormat.getInteger(MediaFormat.KEY_HEIGHT));
         return new Size(mFormat.getInteger(MediaFormat.KEY_WIDTH), mFormat.getInteger(MediaFormat.KEY_HEIGHT));
     }
 
@@ -110,10 +114,24 @@ public class Decoder {
             case MediaCodec.INFO_TRY_AGAIN_LATER:
                 break;
             default:
-                mDecoder.releaseOutputBuffer(outIndex, true);
-                if (mCallback != null) mCallback.run();
+               // Log.v("decodeFrame", "mOutputBuffers size " + mOutputBuffers[outIndex].limit());
+                boolean doRender = mInfo.size != 0;
+                if(doRender) {
+                    mOutputImage = mDecoder.getOutputImage(outIndex);
+                    /*if(mOutputImage!= null) {
+                        mOutputImage.close();
+                        mOutputImage = null;
+                    }*/
+                    mCallback.run();
+                }
+                if(outIndex >= 0) mDecoder.releaseOutputBuffer(outIndex, false);
+
                 break;
         }
+    }
+
+    public MediaCodec.BufferInfo getBufferInfo() {
+        return mInfo;
     }
 
     public void release() {
@@ -121,5 +139,9 @@ public class Decoder {
         mDecoder.stop();
         mDecoder.release();
         mDecoder = null;
+    }
+
+    public Image getOutputImage() {
+        return mOutputImage;
     }
 }
