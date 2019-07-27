@@ -3,4 +3,5 @@
     <string name="choose_video">Выбери видео</string>
     <string name="choose_images">Выбери картинки</string>
     <string name="do_render">Отрендерить</string>
+    <string name="bpp">Bits per pixel: %.2f</string>
 </resources>

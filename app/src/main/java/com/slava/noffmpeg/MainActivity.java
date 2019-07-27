@@ -11,6 +11,7 @@ import android.util.Log;
 import android.view.Surface;
 import android.widget.Button;
 import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -29,15 +30,7 @@ import butterknife.ButterKnife;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String FRAGMENT_SHADER =
-            "#extension GL_OES_EGL_image_external : require\n" +
-                    "precision mediump float;\n" +
-                    "varying vec2 vTextureCoord;\n" +
-                    "uniform samplerExternalOES sTexture;\n" +
-                    "void main() {\n" +
-                    "  gl_FragColor = texture2D(sTexture, vTextureCoord).rbga;\n" +
-                    "}\n";
-
+    private static final float BPP_STEP = 0.05f;
     VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
 
     @BindView(R.id.btn_video) Button mChooseVideo;
@@ -45,6 +38,9 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.btn_process) Button mProcess;
     @BindView(R.id.progressBar) ProgressBar mProgress;
     @BindView(R.id.textStatus) TextView mStatus;
+    @BindView(R.id.seekBar) SeekBar mSeekBar;
+    @BindView(R.id.textBpp) TextView mTextBpp;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +50,19 @@ public class MainActivity extends AppCompatActivity {
         mChooseVideo.setOnClickListener(v -> mFileChooser.chooseVideo(this));
         mChooseImages.setOnClickListener(v -> mFileChooser.chooseImages(this));
         mProcess.setOnClickListener(v -> Executors.newSingleThreadExecutor().submit(this::process));
+        mTextBpp.setText(getString(R.string.bpp, mSeekBar.getProgress() * BPP_STEP));
+        mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                mTextBpp.setText(getString(R.string.bpp, progress * BPP_STEP));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
         mStatus.setText(mFileChooser.getStatus());
     }
 
@@ -65,8 +74,8 @@ public class MainActivity extends AppCompatActivity {
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size);
         if(size == null) return;
         Log.v("Decoder", "size = " + size.width + " x " + size.height);
-        File f = new File(Environment.DIRECTORY_MOVIES, "out.mp4");
-        Encoder encoder = new Encoder(f.getPath(), size, decoder.getFormat());
+        File f = new File(Environment.getExternalStorageDirectory(), "out.mp4");
+        Encoder encoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP);
 
         Surface surface = encoder.getSurface();
         if(surface == null) return;

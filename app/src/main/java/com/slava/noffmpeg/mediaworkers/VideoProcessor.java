@@ -21,17 +21,18 @@ import cc.eevee.turbo.ui.widget.hardware.ScriptC_yuv420888;
 public class VideoProcessor {
 
     private final Size mSize;
-    private List<Bitmap> mBitmaps = new ArrayList<>();
+    private final List<Bitmap> mBitmaps = new ArrayList<>();
     private final int IMG_WIDTH = 100;
     private final int IMG_HEIGHT = 100;
     private Bitmap mImageBuffer;
-    private Paint mPaint = new Paint();
+    private final Paint mPaint = new Paint();
 
     public VideoProcessor(List<String> imagePathes, Size size) {
         mSize = size;
+        mBitmaps.clear();
         mImageBuffer = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888);
         for (String path : imagePathes)
-            mBitmaps.add(Bitmap.createBitmap(BitmapFactory.decodeFile(path), 0, 0, IMG_WIDTH, IMG_HEIGHT));
+            mBitmaps.add(Bitmap.createScaledBitmap(BitmapFactory.decodeFile(path), IMG_WIDTH, IMG_HEIGHT, true));
     }
 
     public void process(Canvas canvas, Image img) {
