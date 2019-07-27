@@ -12,6 +12,12 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         renderscriptTargetApi 18
         renderscriptSupportModeEnabled false
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_TOOLCHAIN=gcc -std=c11 -O3"
+                cFlags "-fopenmp"
+            }
+        }
     }
     buildTypes {
         release {
