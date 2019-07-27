@@ -69,6 +69,7 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(J
             CLAMP(R)
             CLAMP(G)
             CLAMP(B)
+
             *row_out++ = R | (G << 8) | (B << 16) | 0xFF000000;
 
             Y = *row_y++;

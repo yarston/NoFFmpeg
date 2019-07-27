@@ -2,9 +2,7 @@ package com.slava.noffmpeg;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Paint;
 import android.graphics.Rect;
 import android.media.Image;
 import android.os.Bundle;
@@ -28,11 +26,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
-
-import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB;
-import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB_C;
-import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB_Java;
-import static com.slava.noffmpeg.mediaworkers.VideoProcessor.YUV_420_888_toRGB_Java2;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -67,15 +60,12 @@ public class MainActivity extends AppCompatActivity {
     private void process() {
         long startTime = System.currentTimeMillis();
         if(mFileChooser.getVideoPath() == null) return;
-
-        VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes());
         Decoder decoder = new Decoder(mFileChooser.getVideoPath());
-
-        File f = new File(Environment.getExternalStorageDirectory(), "out.mp4");
-
         Size size = decoder.getSize();
+        VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size);
         if(size == null) return;
         Log.v("Decoder", "size = " + size.width + " x " + size.height);
+        File f = new File(Environment.DIRECTORY_MOVIES, "out.mp4");
         Encoder encoder = new Encoder(f.getPath(), size, decoder.getFormat());
 
         Surface surface = encoder.getSurface();
@@ -91,16 +81,12 @@ public class MainActivity extends AppCompatActivity {
 
         });
 
-        Bitmap bmp = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888);
-
         decoder.prepare(null, () -> {
 
             Image img = decoder.getOutputImage();
             if(img != null)  {
                 Canvas canvas = surface.lockCanvas(new Rect(0, 0, size.width, size.height));
-                YUV_420_888_toRGB_C(bmp, img, size.width, size.height);
-                //Bitmap bmp = YUV_420_888_toRGB_Java2(this, img, size.width, size.height);
-                canvas.drawBitmap(bmp, 0, 0, new Paint());
+                processor.process(canvas, img);
                 img.close();
                 surface.unlockCanvasAndPost(canvas);
             } else {
@@ -113,8 +99,8 @@ public class MainActivity extends AppCompatActivity {
             mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
         });
 
-         for(int i = 0; i < 100; i++)decoder.decodeFrame();
-        //while (decoder.haveFrame()) decoder.decodeFrame();
+         //for(int i = 0; i < 100; i++)decoder.decodeFrame();
+        while (decoder.haveFrame()) decoder.decodeFrame();
         decoder.release();
         encoder.release();
 
