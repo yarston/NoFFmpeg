@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <omp.h>
 
-#define  LOG_TAG    "libplasma"
+#define  LOG_TAG    "libyuv2rgb"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 
@@ -58,17 +58,17 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(J
         uint8_t *row_v = v + idx_uv;
 
         for (uint32_t j = 0; j < width1; j += 2) {
-            float Y = *row_y1++;
-            int U = *row_u++ - 128;
-            int V = *row_v++ - 128;
+            float U = (float) *row_u++ - 128;
+            float V = (float) *row_v++ - 128;
 
-            float Ug = -0.395f * U;
+            float UgVg = -0.395f * U - 0.581f * V;
             float Ub = 2.032f * U;
             float Vr = 1.140f * V;
-            float Vg = -0.581f * V;
+
+            float Y = *row_y1++;
 
             int32_t R = (int32_t) (Y + Vr);
-            int32_t G = (int32_t) (Y + Ug + Vg);
+            int32_t G = (int32_t) (Y + UgVg);
             int32_t B = (int32_t) (Y + Ub);
 
             CLAMP(R)
@@ -80,7 +80,7 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(J
             Y = *row_y1++;
 
             R = (int32_t) (Y + Vr);
-            G = (int32_t) (Y + Ug + Vg);
+            G = (int32_t) (Y + UgVg);
             B = (int32_t) (Y + Ub);
 
             CLAMP(R)
@@ -92,7 +92,7 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(J
             Y = *row_y2++;
 
             R = (int32_t) (Y + Vr);
-            G = (int32_t) (Y + Ug + Vg);
+            G = (int32_t) (Y + UgVg);
             B = (int32_t) (Y + Ub);
 
             CLAMP(R)
@@ -104,7 +104,7 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(J
             Y = *row_y2++;
 
             R = (int32_t) (Y + Vr);
-            G = (int32_t) (Y + Ug + Vg);
+            G = (int32_t) (Y + UgVg);
             B = (int32_t) (Y + Ub);
 
             CLAMP(R)
