@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.slava.noffmpeg.mediaworkers.Decoder;
 import com.slava.noffmpeg.mediaworkers.Encoder;
+import com.slava.noffmpeg.mediaworkers.PauseMaker;
 import com.slava.noffmpeg.mediaworkers.Size;
 import com.slava.noffmpeg.mediaworkers.VideoProcessor;
 
@@ -32,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final float BPP_STEP = 0.05f;
     VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
+    PauseMaker mPauseMaker = new PauseMaker();
 
     @BindView(R.id.btn_video) Button mChooseVideo;
     @BindView(R.id.btn_images) Button mChooseImages;
@@ -64,6 +66,8 @@ public class MainActivity extends AppCompatActivity {
             public void onStopTrackingTouch(SeekBar seekBar) {}
         });
         mStatus.setText(mFileChooser.getStatus());
+        mPauseMaker.setGif(getResources(), R.raw.giphy);
+        //mPauseMaker.setImage(getResources(), R.raw.i);
     }
 
     private void process() {
