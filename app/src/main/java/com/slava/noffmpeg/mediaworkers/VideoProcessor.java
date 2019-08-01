@@ -5,12 +5,14 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.media.Image;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
 import android.renderscript.Script;
 import android.renderscript.Type;
+import android.view.Surface;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -35,14 +37,19 @@ public class VideoProcessor {
             mBitmaps.add(Bitmap.createScaledBitmap(BitmapFactory.decodeFile(path), IMG_WIDTH, IMG_HEIGHT, true));
     }
 
-    public void process(Canvas canvas, Image img) {
-        Image.Plane[] planes = img.getPlanes();
-        cvtYUV_420_888_to_RGBA(mImageBuffer, planes[0].getBuffer(), planes[1].getBuffer(), planes[2].getBuffer());
-        canvas.drawBitmap(mImageBuffer, 0, 0, mPaint);
+    public void process(Surface surface, Image img) {
+        Canvas canvas = surface.lockCanvas(new Rect(0, 0, mSize.width, mSize.height));
+        if(img != null) {
+            Image.Plane[] planes = img.getPlanes();
+            cvtYUV_420_888_to_RGBA(mImageBuffer, planes[0].getBuffer(), planes[1].getBuffer(), planes[2].getBuffer());
+            canvas.drawBitmap(mImageBuffer, 0, 0, mPaint);
 
-        for(int i = 0; i < mBitmaps.size(); i++) {
-            canvas.drawBitmap(mBitmaps.get(i), (i / 2 == 0) ? 0 : mSize.width - IMG_WIDTH, (i % 2 == 0) ? 0 : mSize.height - IMG_HEIGHT, mPaint);
+            for (int i = 0; i < mBitmaps.size(); i++)
+                canvas.drawBitmap(mBitmaps.get(i), (i / 2 == 0) ? 0 : mSize.width - IMG_WIDTH, (i % 2 == 0) ? 0 : mSize.height - IMG_HEIGHT, mPaint);
+
+            img.close();
         }
+        surface.unlockCanvasAndPost(canvas);
     }
 
     private static native void cvtYUV_420_888_to_RGBA(Bitmap  bitmap, ByteBuffer buff_y, ByteBuffer buff_u, ByteBuffer buff_v);

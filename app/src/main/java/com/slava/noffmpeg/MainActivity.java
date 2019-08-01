@@ -2,9 +2,6 @@ package com.slava.noffmpeg;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Canvas;
-import android.graphics.Rect;
-import android.media.Image;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
@@ -97,18 +94,8 @@ public class MainActivity extends AppCompatActivity {
         });
 
         decoder.prepare(null, () -> {
-
-            Image img = decoder.getOutputImage();
-            if(img != null)  {
-                Canvas canvas = surface.lockCanvas(new Rect(0, 0, size.width, size.height));
-                processor.process(canvas, img);
-                img.close();
-                surface.unlockCanvasAndPost(canvas);
-            } else {
-                Canvas canvas = surface.lockCanvas(new Rect(0, 0, size.width, size.height));
-                surface.unlockCanvasAndPost(canvas);
-            }
-
+            if (!mPauseMaker.process(surface, size))
+                processor.process(surface, decoder.getOutputImage());
             Log.v("Decoder", "frame " + nFrames);
             encoder.encodeFrame();
             mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));

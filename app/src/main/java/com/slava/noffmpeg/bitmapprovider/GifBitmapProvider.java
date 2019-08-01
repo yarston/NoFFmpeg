@@ -199,6 +199,7 @@ public class GifBitmapProvider implements BitmapProvider {
         }
         Log.w(TAG, "setPixels " + framePointer);
         setPixels(framePointer); // transfer pixel data to image
+        framePointer = (framePointer + 1) % frameCount;
 
         // Reset the transparent pixel in the color table
         if (frame.transparency) act[frame.transIndex] = save;
