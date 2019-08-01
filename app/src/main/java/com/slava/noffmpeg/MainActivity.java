@@ -7,8 +7,10 @@ import android.os.Environment;
 import android.util.Log;
 import android.view.Surface;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -40,6 +42,7 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.textStatus) TextView mStatus;
     @BindView(R.id.seekBar) SeekBar mSeekBar;
     @BindView(R.id.textBpp) TextView mTextBpp;
+    @BindView(R.id.switch1) Switch mSwitch;
 
 
     @Override
@@ -64,10 +67,12 @@ public class MainActivity extends AppCompatActivity {
             public void onStopTrackingTouch(SeekBar seekBar) {}
         });
         mStatus.setText(mFileChooser.getStatus());
-        //select animated gif or static image
-        //mPauseMaker.setGif(getResources(), R.raw.giphy);
         mPauseMaker.setImage(getResources(), R.raw.i);
         mPause.setOnClickListener(v -> mPause.setText(mPauseMaker.changeStatus() ? R.string.continue_ : R.string.pause));
+        mSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if(isChecked) mPauseMaker.setGif(getResources(), R.raw.giphy);
+            else mPauseMaker.setImage(getResources(), R.raw.i);
+        });
     }
 
     private void process() {
