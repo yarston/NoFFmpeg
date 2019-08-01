@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <sys/types.h>
+#include <stdio.h>
 
 typedef struct gd_Palette {
     int size;
@@ -18,8 +19,8 @@ typedef struct gd_GCE {
 } gd_GCE;
 
 typedef struct gd_GIF {
-    int fd;
-    off_t anim_start;
+    FILE *fd;
+    long anim_start;
     uint16_t width, height;
     uint16_t depth;
     uint16_t loop_count;
@@ -38,7 +39,7 @@ typedef struct gd_GIF {
     uint8_t *canvas, *frame;
 } gd_GIF;
 
-gd_GIF *gd_open_gif(const char *fname);
+gd_GIF *gd_open_gif(const int fd, long offset);
 int gd_get_frame(gd_GIF *gif);
 void gd_render_frame(gd_GIF *gif, uint8_t *buffer);
 void gd_rewind(gd_GIF *gif);

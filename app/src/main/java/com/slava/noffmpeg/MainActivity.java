@@ -64,8 +64,9 @@ public class MainActivity extends AppCompatActivity {
             public void onStopTrackingTouch(SeekBar seekBar) {}
         });
         mStatus.setText(mFileChooser.getStatus());
-        mPauseMaker.setGif(getResources(), R.raw.giphy);
-        //mPauseMaker.setImage(getResources(), R.raw.i);
+        //select animated gif or static image
+        //mPauseMaker.setGif(getResources(), R.raw.giphy);
+        mPauseMaker.setImage(getResources(), R.raw.i);
         mPause.setOnClickListener(v -> mPause.setText(mPauseMaker.changeStatus() ? R.string.continue_ : R.string.pause));
     }
 
