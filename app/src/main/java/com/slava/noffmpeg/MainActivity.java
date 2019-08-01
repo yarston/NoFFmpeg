@@ -38,6 +38,7 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.btn_video) Button mChooseVideo;
     @BindView(R.id.btn_images) Button mChooseImages;
     @BindView(R.id.btn_process) Button mProcess;
+    @BindView(R.id.btn_pause) Button mPause;
     @BindView(R.id.progressBar) ProgressBar mProgress;
     @BindView(R.id.textStatus) TextView mStatus;
     @BindView(R.id.seekBar) SeekBar mSeekBar;
@@ -68,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
         mStatus.setText(mFileChooser.getStatus());
         mPauseMaker.setGif(getResources(), R.raw.giphy);
         //mPauseMaker.setImage(getResources(), R.raw.i);
+        mPause.setOnClickListener(v -> mPause.setText(mPauseMaker.changeStatus() ? R.string.continue_ : R.string.pause));
     }
 
     private void process() {

@@ -27,10 +27,12 @@ public class PauseMaker {
         //TODO
     }
 
-    public void setStatus(boolean isPaused) {
-        if(isPaused == mIsPaused) return;
+    public boolean changeStatus() {
+        return mIsPaused = !mIsPaused;
+    }
 
-        mIsPaused = isPaused;
+    public boolean getStatus() {
+        return mIsPaused;
     }
 
 }
