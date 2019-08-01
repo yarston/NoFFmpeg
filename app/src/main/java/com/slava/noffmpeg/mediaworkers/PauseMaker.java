@@ -9,8 +9,8 @@ import android.graphics.Rect;
 import android.view.Surface;
 
 import com.slava.noffmpeg.bitmapprovider.BitmapProvider;
-import com.slava.noffmpeg.bitmapprovider.GifBitmapProvider;
-import com.slava.noffmpeg.bitmapprovider.ImageBitmapProvider;
+import com.slava.noffmpeg.bitmapprovider.GifProvider;
+import com.slava.noffmpeg.bitmapprovider.ImageProvider;
 
 public class PauseMaker {
 
@@ -24,11 +24,11 @@ public class PauseMaker {
     }
 
     public void setGif(Resources res, int resId) {
-        mBitmapProvider = new GifBitmapProvider().read(res, resId);
+        mBitmapProvider = new GifProvider().read(res, resId);
     }
 
     public void setImage(Resources res, int resId) {
-        mBitmapProvider = new ImageBitmapProvider().read(res, resId);
+        mBitmapProvider = new ImageProvider().read(res, resId);
     }
 
     public void setVideo(Resources res, int resId) {

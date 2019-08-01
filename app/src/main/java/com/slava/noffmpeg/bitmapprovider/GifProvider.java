@@ -11,11 +11,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 
-public class GifBitmapProvider implements BitmapProvider {
+public class GifProvider implements BitmapProvider {
 
 
 
-    private static final String TAG = GifBitmapProvider.class.getSimpleName();
+    private static final String TAG = GifProvider.class.getSimpleName();
 
     /**
      * File read status: No errors.

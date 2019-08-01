@@ -4,7 +4,7 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
-public class ImageBitmapProvider implements BitmapProvider {
+public class ImageProvider implements BitmapProvider {
 
     Bitmap mBitmap = null;
 
