@@ -1,7 +1,5 @@
 package com.slava.noffmpeg.mediaworkers;
 
-import android.graphics.Canvas;
-import android.graphics.Rect;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -20,13 +18,12 @@ public class Encoder {
     private Surface mSurface;
     private MediaCodec.BufferInfo mInfo = new MediaCodec.BufferInfo();;
     private ByteBuffer[] mOutputBuffers;
-
     private MediaMuxer mMuxer = null;
     private int mFramesEncoded = 0;
     private int mFrameRate = 30;
 
     public Encoder(String path, Size size, MediaFormat inputFormat, float bitsPerPixel) {
-        if(inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE))
+        if(inputFormat != null && inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE))
             mFrameRate = inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE);
 
         MediaFormat format = MediaFormat.createVideoFormat("video/avc", size.width, size.height);
@@ -45,12 +42,9 @@ public class Encoder {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        Canvas canvas = mSurface.lockCanvas(new Rect(0,0,  size.width, size.height));
-        mSurface.unlockCanvasAndPost(canvas);
     }
 
-    public void encodeFrame() {
+    public boolean encodeFrame() {
         int outIndex = mEncoder.dequeueOutputBuffer(mInfo, TIMEOUT_US);
         switch (outIndex) {
             case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
@@ -65,7 +59,7 @@ public class Encoder {
                 break;
             case MediaCodec.INFO_TRY_AGAIN_LATER:
                 Log.i("Encoder", "INFO_TRY_AGAIN_LATER");
-                break;
+                return false;//break;
             default:
                 if(mInfo.size > 0) {
                     mInfo.presentationTimeUs = computePresentationTime(mFramesEncoded++, mFrameRate);
@@ -74,6 +68,7 @@ public class Encoder {
                 mEncoder.releaseOutputBuffer(outIndex, false);
                 break;
         }
+        return (mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) == 0;
     }
 
     private long computePresentationTime(int frameIndex, int frameRate) {

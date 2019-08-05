@@ -29,7 +29,7 @@ class VideoPictureFileChooser {
         activity.startActivityForResult(intent, Constant.REQUEST_CODE_PICK_IMAGE);
     }
 
-    void processResult(int requestCode, Intent intent) {
+    boolean processResult(int requestCode, Intent intent) {
         switch (requestCode) {
             case Constant.REQUEST_CODE_PICK_IMAGE:
                 mImageFilePathes.clear();
@@ -37,12 +37,14 @@ class VideoPictureFileChooser {
                 if (listImages != null)
                     for (ImageFile f : listImages)
                         mImageFilePathes.add(f.getPath());
-                break;
+                return true;
             case Constant.REQUEST_CODE_PICK_VIDEO:
                 ArrayList<VideoFile> listVideos = intent.getParcelableArrayListExtra(Constant.RESULT_PICK_VIDEO);
                 if (listVideos != null && !listVideos.isEmpty())
                     mVideoFilePath = listVideos.get(0).getPath();
+                return true;
         }
+        return false;
     }
 
     String getStatus() {

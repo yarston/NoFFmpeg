@@ -1,13 +1,20 @@
 package com.slava.noffmpeg;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.hardware.display.DisplayManager;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Display;
 import android.view.Surface;
 import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -31,18 +38,23 @@ import butterknife.ButterKnife;
 public class MainActivity extends AppCompatActivity {
 
     private static final float BPP_STEP = 0.05f;
-    VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
-    PauseMaker mPauseMaker = new PauseMaker();
+    private static final int REQUEST_MEDIA_PROJECTION = 1;
+    private final VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
+    private final Handler mDrainHandler = new Handler(Looper.getMainLooper());
+    private final PauseMaker mPauseMaker = new PauseMaker();
 
     @BindView(R.id.btn_video) Button mChooseVideo;
     @BindView(R.id.btn_images) Button mChooseImages;
     @BindView(R.id.btn_process) Button mProcess;
     @BindView(R.id.btn_pause) Button mPause;
+    @BindView(R.id.btn_screenrecord) Button mScreenRecord;
     @BindView(R.id.progressBar) ProgressBar mProgress;
     @BindView(R.id.textStatus) TextView mStatus;
     @BindView(R.id.seekBar) SeekBar mSeekBar;
     @BindView(R.id.textBpp) TextView mTextBpp;
     @BindView(R.id.switch1) Switch mSwitch;
+    private Encoder mScreenEncoder;
+    private MediaProjection mMediaProjection;
 
 
     @Override
@@ -52,7 +64,8 @@ public class MainActivity extends AppCompatActivity {
         ButterKnife.bind(this);
         mChooseVideo.setOnClickListener(v -> mFileChooser.chooseVideo(this));
         mChooseImages.setOnClickListener(v -> mFileChooser.chooseImages(this));
-        mProcess.setOnClickListener(v -> Executors.newSingleThreadExecutor().submit(this::process));
+        mScreenRecord.setOnClickListener(v -> checkScreenRecordPermission());
+        mProcess.setOnClickListener(v -> Executors.newSingleThreadExecutor().submit(this::processFile2File));
         mTextBpp.setText(getString(R.string.bpp, mSeekBar.getProgress() * BPP_STEP));
         mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -75,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void process() {
+    private void processFile2File() {
         long startTime = System.currentTimeMillis();
         if(mFileChooser.getVideoPath() == null) return;
         Decoder decoder = new Decoder(mFileChooser.getVideoPath());
@@ -121,8 +134,49 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void checkScreenRecordPermission() {
+        if(mScreenEncoder != null) {
+            releaseEncoders();
+        } else {
+            MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
+        }
+    }
+
+    private void startRecording() {
+        DisplayManager dm = (DisplayManager)getSystemService(Context.DISPLAY_SERVICE);
+        Display defaultDisplay = dm.getDisplay(Display.DEFAULT_DISPLAY);
+        if (defaultDisplay == null) throw new RuntimeException("No display found.");
+        mScreenRecord.setText("Стоп");
+        Size size = new Size(1280, 720);
+        mScreenEncoder = new Encoder("/sdcard/video.mp4", size, null, mSeekBar.getProgress() * BPP_STEP);
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);
+        drainEncoder();
+    }
+
+    private void drainEncoder() {
+        mDrainHandler.removeCallbacks(this::drainEncoder);
+        while(mScreenEncoder != null && mScreenEncoder.encodeFrame());
+        mDrainHandler.postDelayed(this::drainEncoder, 10);
+    }
+
+    private void releaseEncoders() {
+        mDrainHandler.removeCallbacks(this::drainEncoder);
+        mMediaProjection.stop();
+        mScreenEncoder.release();
+        mScreenEncoder = null;
+        mScreenRecord.setText(R.string.screen_record);
+    }
+
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        if (resultCode == Activity.RESULT_OK) mFileChooser.processResult(requestCode, intent);
-        mStatus.setText(mFileChooser.getStatus());
+        if (resultCode == Activity.RESULT_OK)
+            if (mFileChooser.processResult(requestCode, intent))
+                mStatus.setText(mFileChooser.getStatus());
+            else if (requestCode == REQUEST_MEDIA_PROJECTION) {
+                MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                mMediaProjection = manager.getMediaProjection(resultCode, intent);
+                startRecording();
+            }
     }
 }
