@@ -114,7 +114,7 @@ public class Decoder {
             case MediaCodec.INFO_TRY_AGAIN_LATER:
                 break;
             default:
-               // Log.v("decodeFrame", "mOutputBuffers size " + mOutputBuffers[outIndex].limit());
+               // Log.v("decodeFrame", "outBuffer size " + outBuffer[outIndex].limit());
                 boolean doRender = mInfo.size != 0;
                 if(doRender) {
                     mOutputImage = mDecoder.getOutputImage(outIndex);

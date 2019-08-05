@@ -18,7 +18,7 @@ public class PauseMaker {
     Paint mPaint = new Paint() {{this.setColor(Color.BLACK);}};
 
     BitmapProvider mBitmapProvider = null;
-    boolean mIsPaused = false;
+    public boolean mIsPaused = false;
 
     public PauseMaker() {
 

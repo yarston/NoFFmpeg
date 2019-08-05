@@ -9,6 +9,7 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -55,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.switch1) Switch mSwitch;
     private Encoder mScreenEncoder;
     private MediaProjection mMediaProjection;
+    Size size = new Size(1280, 720);
 
 
     @Override
@@ -97,9 +99,9 @@ public class MainActivity extends AppCompatActivity {
         if(size == null) return;
         Log.v("Decoder", "size = " + size.width + " x " + size.height);
         File f = new File(Environment.getExternalStorageDirectory(), "out.mp4");
-        Encoder encoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP);
+        Encoder encoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP, 1);
 
-        Surface surface = encoder.getSurface();
+        Surface surface = encoder.getSurface(0);
         if(surface == null) return;
         AtomicInteger nFrames = new AtomicInteger();
         runOnUiThread(() -> {
@@ -109,14 +111,13 @@ public class MainActivity extends AppCompatActivity {
             mChooseVideo.setEnabled(false);
             mChooseImages.setEnabled(false);
             mProcess.setEnabled(false);
-
         });
 
         decoder.prepare(null, () -> {
             if (!mPauseMaker.process(surface, size))
                 processor.process(surface, decoder.getOutputImage());
             Log.v("Decoder", "frame " + nFrames);
-            encoder.encodeFrame();
+            encoder.encodeFrame(0);
             mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
         });
 
@@ -148,22 +149,34 @@ public class MainActivity extends AppCompatActivity {
         Display defaultDisplay = dm.getDisplay(Display.DEFAULT_DISPLAY);
         if (defaultDisplay == null) throw new RuntimeException("No display found.");
         mScreenRecord.setText("Стоп");
-        Size size = new Size(1280, 720);
-        mScreenEncoder = new Encoder("/sdcard/video.mp4", size, null, mSeekBar.getProgress() * BPP_STEP);
+        mScreenEncoder = new Encoder("/sdcard/video.mp4", size, null, mSeekBar.getProgress() * BPP_STEP, 2);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);
+        mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(0),null, null);
         drainEncoder();
+        /*new HandlerThread("recordThread") {
+            @Override
+            public void run() {
+                super.run();
+                Handler h = new Handler(getLooper());
+                h.removeCallbacks(this::run);
+                if (mScreenEncoder == null) return;
+                while(mScreenEncoder != null && mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), size) ? 1 : 0));
+                h.postDelayed(this::run, 10);
+            }
+        }.start();*/
     }
 
     private void drainEncoder() {
         mDrainHandler.removeCallbacks(this::drainEncoder);
-        while(mScreenEncoder != null && mScreenEncoder.encodeFrame());
+        if (mScreenEncoder == null) return;
+        while(mScreenEncoder != null && mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), size) ? 1 : 0));
         mDrainHandler.postDelayed(this::drainEncoder, 10);
     }
 
     private void releaseEncoders() {
         mDrainHandler.removeCallbacks(this::drainEncoder);
-        mMediaProjection.stop();
+        if(mMediaProjection != null) mMediaProjection.stop();
+        mMediaProjection = null;
         mScreenEncoder.release();
         mScreenEncoder = null;
         mScreenRecord.setText(R.string.screen_record);
