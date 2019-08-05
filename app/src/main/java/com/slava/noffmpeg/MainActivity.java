@@ -9,7 +9,6 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -41,7 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private static final float BPP_STEP = 0.05f;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
     private final VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
-    private final Handler mDrainHandler = new Handler(Looper.getMainLooper());
+    private Handler mDrainHandler = null;
     private final PauseMaker mPauseMaker = new PauseMaker();
 
     @BindView(R.id.btn_video) Button mChooseVideo;
@@ -57,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private Encoder mScreenEncoder;
     private MediaProjection mMediaProjection;
     Size size = new Size(1280, 720);
+    private boolean isRunning = false;
 
 
     @Override
@@ -137,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void checkScreenRecordPermission() {
         if(mScreenEncoder != null) {
-            releaseEncoders();
+            isRunning = false;
         } else {
             MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
             startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
@@ -152,29 +152,36 @@ public class MainActivity extends AppCompatActivity {
         mScreenEncoder = new Encoder("/sdcard/video.mp4", size, null, mSeekBar.getProgress() * BPP_STEP, 2);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(0),null, null);
-        drainEncoder();
-        /*new HandlerThread("recordThread") {
-            @Override
-            public void run() {
-                super.run();
-                Handler h = new Handler(getLooper());
-                h.removeCallbacks(this::run);
-                if (mScreenEncoder == null) return;
-                while(mScreenEncoder != null && mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), size) ? 1 : 0));
-                h.postDelayed(this::run, 10);
+
+        isRunning = true;
+        Executors.newSingleThreadExecutor().submit(()->{
+            if(mDrainHandler == null) {
+                Looper.prepare();
+                Looper looper;
+                synchronized (this) {
+                    looper = Looper.myLooper();
+                    notifyAll();
+                }
+                mDrainHandler = new Handler(looper);
+                mDrainHandler.postDelayed(this::drain, 10);
+                Looper.loop();
             }
-        }.start();*/
+        });
     }
 
-    private void drainEncoder() {
-        mDrainHandler.removeCallbacks(this::drainEncoder);
-        if (mScreenEncoder == null) return;
-        while(mScreenEncoder != null && mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), size) ? 1 : 0));
-        mDrainHandler.postDelayed(this::drainEncoder, 10);
+    private void drain() {
+        if(mDrainHandler == null) return;
+        mDrainHandler.removeCallbacks(this::drain);
+        if(isRunning) {
+            if (mScreenEncoder == null) return;
+            while (mScreenEncoder != null && mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), size) ? 1 : 0));
+            mDrainHandler.postDelayed(this::drain, 10);
+        } else {
+            releaseEncoders();
+        }
     }
 
     private void releaseEncoders() {
-        mDrainHandler.removeCallbacks(this::drainEncoder);
         if(mMediaProjection != null) mMediaProjection.stop();
         mMediaProjection = null;
         mScreenEncoder.release();
