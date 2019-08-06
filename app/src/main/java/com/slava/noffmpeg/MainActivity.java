@@ -9,7 +9,7 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
-import android.os.Looper;
+import android.os.HandlerThread;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
@@ -55,8 +55,8 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.switch1) Switch mSwitch;
     private Encoder mScreenEncoder;
     private MediaProjection mMediaProjection;
-    Size size = new Size(1280, 720);
-    private boolean isRunning = false;
+    private Size mVideoSize = new Size(1280, 720);
+    private HandlerThread mRenderThread = new HandlerThread("render_thread");
 
 
     @Override
@@ -66,7 +66,19 @@ public class MainActivity extends AppCompatActivity {
         ButterKnife.bind(this);
         mChooseVideo.setOnClickListener(v -> mFileChooser.chooseVideo(this));
         mChooseImages.setOnClickListener(v -> mFileChooser.chooseImages(this));
-        mScreenRecord.setOnClickListener(v -> checkScreenRecordPermission());
+        mScreenRecord.setOnClickListener(v -> {
+            if (mScreenEncoder == null) {
+                MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
+            } else {
+                mDrainHandler.post(() -> {
+                    mMediaProjection.stop();
+                    mScreenEncoder.release();
+                    mScreenEncoder = null;
+                    runOnUiThread(() -> mScreenRecord.setText(R.string.screen_record));
+                });
+            }
+        });
         mProcess.setOnClickListener(v -> Executors.newSingleThreadExecutor().submit(this::processFile2File));
         mTextBpp.setText(getString(R.string.bpp, mSeekBar.getProgress() * BPP_STEP));
         mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -88,6 +100,8 @@ public class MainActivity extends AppCompatActivity {
             if(isChecked) mPauseMaker.setGif(getResources(), R.raw.giphy);
             else mPauseMaker.setImage(getResources(), R.raw.i);
         });
+        mRenderThread.start();
+        mDrainHandler = new Handler(mRenderThread.getLooper());
     }
 
     private void processFile2File() {
@@ -97,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
         Size size = decoder.getSize();
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size);
         if(size == null) return;
-        Log.v("Decoder", "size = " + size.width + " x " + size.height);
+        Log.v("Decoder", "mVideoSize = " + size.width + " x " + size.height);
         File f = new File(Environment.getExternalStorageDirectory(), "out.mp4");
         Encoder encoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP, 1);
 
@@ -135,58 +149,11 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void checkScreenRecordPermission() {
-        if(mScreenEncoder != null) {
-            isRunning = false;
-        } else {
-            MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-            startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
-        }
-    }
-
-    private void startRecording() {
-        DisplayManager dm = (DisplayManager)getSystemService(Context.DISPLAY_SERVICE);
-        Display defaultDisplay = dm.getDisplay(Display.DEFAULT_DISPLAY);
-        if (defaultDisplay == null) throw new RuntimeException("No display found.");
-        mScreenRecord.setText("Стоп");
-        mScreenEncoder = new Encoder("/sdcard/video.mp4", size, null, mSeekBar.getProgress() * BPP_STEP, 2);
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(0),null, null);
-
-        isRunning = true;
-        Executors.newSingleThreadExecutor().submit(()->{
-            if(mDrainHandler == null) {
-                Looper.prepare();
-                Looper looper;
-                synchronized (this) {
-                    looper = Looper.myLooper();
-                    notifyAll();
-                }
-                mDrainHandler = new Handler(looper);
-                mDrainHandler.postDelayed(this::drain, 10);
-                Looper.loop();
-            }
-        });
-    }
-
     private void drain() {
-        if(mDrainHandler == null) return;
         mDrainHandler.removeCallbacks(this::drain);
-        if(isRunning) {
-            if (mScreenEncoder == null) return;
-            while (mScreenEncoder != null && mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), size) ? 1 : 0));
-            mDrainHandler.postDelayed(this::drain, 10);
-        } else {
-            releaseEncoders();
-        }
-    }
-
-    private void releaseEncoders() {
-        if(mMediaProjection != null) mMediaProjection.stop();
-        mMediaProjection = null;
-        mScreenEncoder.release();
-        mScreenEncoder = null;
-        mScreenRecord.setText(R.string.screen_record);
+        if (mScreenEncoder == null) return;
+        while (mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), mVideoSize) ? 1 : 0));
+        mDrainHandler.postDelayed(this::drain, 10);
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
@@ -196,7 +163,14 @@ public class MainActivity extends AppCompatActivity {
             else if (requestCode == REQUEST_MEDIA_PROJECTION) {
                 MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
                 mMediaProjection = manager.getMediaProjection(resultCode, intent);
-                startRecording();
+                DisplayManager dm = (DisplayManager)getSystemService(Context.DISPLAY_SERVICE);
+                Display defaultDisplay = dm.getDisplay(Display.DEFAULT_DISPLAY);
+                if (defaultDisplay == null) throw new RuntimeException("No display found.");
+                mScreenRecord.setText("Стоп");
+                mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, null, mSeekBar.getProgress() * BPP_STEP, 2);
+                DisplayMetrics metrics = getResources().getDisplayMetrics();
+                mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(0),null, null);
+                mDrainHandler.postDelayed(this::drain, 10);
             }
     }
 }
