@@ -24,6 +24,7 @@ public class VideoFramesProvider extends FramesProvider {
         Decoder decoder = new Decoder(path);
         decoder.prepare(null, () -> {
             Image picture = decoder.getOutputImage();
+
             if(mBufferBitmap == null) mBufferBitmap = Bitmap.createBitmap(picture.getWidth(), picture.getHeight(), Bitmap.Config.ARGB_8888);
             Image.Plane[] planes = picture.getPlanes();
             cvtYUV_420_888_to_RGBA(mBufferBitmap, planes[0].getBuffer(), planes[1].getBuffer(), planes[2].getBuffer());

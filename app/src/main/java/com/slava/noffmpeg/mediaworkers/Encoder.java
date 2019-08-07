@@ -28,10 +28,10 @@ public class Encoder {
     private FramesProvider mPauseFrame = null;
     private boolean mRequestResume = false;
     private boolean mRequestKeyFrame = false;
+    private boolean mIsFirstPauseFrame = false;
     private MediaCodec mEncoder;
     private Surface mSurface;
     private final MediaCodec.BufferInfo mInfo = new MediaCodec.BufferInfo();
-    ;
 
     //Нужно запилить паузу. Варианты:
     //1. Рисовать на том же холсте, который используется в MediaProjection, нельзя через Canvas, крашится. Но может быть, можно как-то иначе, хз.
@@ -67,13 +67,13 @@ public class Encoder {
         info.presentationTimeUs = (mFramesEncoded++) * 1000000 / mFrameRate;
         info.offset = 0;
         info.size = frame.data.length;
-        info.flags = 9;
+        info.flags = frame.flags;
         mMuxer.writeSampleData(mVideoTrackIndex, ByteBuffer.wrap(frame.data), info);
     }
 
     public boolean encodeFrame() {
         if (isPaused() && !mRequestResume) {
-            writeEncodedData(mPauseFrame.next());
+            writeEncodedData(mIsFirstPauseFrame ? mPauseFrame.first() : mPauseFrame.next());
             return false;
         }
 
@@ -99,7 +99,7 @@ public class Encoder {
                 break;
             case INFO_TRY_AGAIN_LATER:
                 Log.i("Encoder", "INFO_TRY_AGAIN_LATER");
-                return false;//break;
+                return (mInfo.flags & BUFFER_FLAG_CODEC_CONFIG) != 0;
             default:
                 // Если нужно выйти из паузы, начинаем кодировать входящие фреймы.
                 // Но сначала нужно дождаться ключевого кадра, только после его записи
@@ -126,11 +126,14 @@ public class Encoder {
                 break;
         }
 
-        return (mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) == 0 || ((mInfo.flags & BUFFER_FLAG_CODEC_CONFIG) != 0);
+        return (mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) == 0;
     }
 
     public void setPause(FramesProvider pauseFrame) {
-        if (mPauseFrame == null) mPauseFrame = pauseFrame;
+        if (mPauseFrame == null) {
+            mPauseFrame = pauseFrame;
+            mIsFirstPauseFrame = true;
+        }
     }
 
     public boolean isPaused() {

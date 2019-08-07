@@ -10,6 +10,7 @@
     <string name="screen_record">Запись экрана</string>
     <string name="choose_pause">Выбери паузу</string>
     <string name="file_not_suitable">Файл не подходит!</string>
+    <string name="pause_frames_not_loaded">Заставка для паузы не загружена</string>
     <string-array name="pause_vars">
         <item>Gif</item>
         <item>Image</item>

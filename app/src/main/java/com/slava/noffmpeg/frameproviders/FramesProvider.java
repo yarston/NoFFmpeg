@@ -28,8 +28,24 @@ import static com.slava.noffmpeg.mediaworkers.Encoder.getDefaultFormat;
 
 public abstract class FramesProvider {
 
-    private final List<EncodedFrame> mFrames = new ArrayList<>();
+    final List<EncodedFrame> mFrames = new ArrayList<>();
     private int mIndex = 0;
+
+    /**
+     * Для случая, когда предоставляется только лишь 1 кадр, нужно предоставить отдельно
+     * ключевой фрейм и промежуточный
+     * @return первый (ключевой) фрейм
+     */
+
+    @Nullable
+    public EncodedFrame first() {
+        mIndex = 1;
+        return mFrames.isEmpty() ? null : mFrames.get(0);
+    }
+
+    /**
+     * @return ключевой либо промежуточный файл
+     */
 
     @Nullable
     public EncodedFrame next() {

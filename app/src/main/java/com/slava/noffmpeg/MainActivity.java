@@ -103,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
             if(mScreenEncoder != null) {
                 if(mScreenEncoder.isPaused()) mScreenEncoder.resume();
                 else if(mPauseFramesProvider != null) mScreenEncoder.setPause(mPauseFramesProvider);
+                else Toast.makeText(this, R.string.pause_frames_not_loaded, Toast.LENGTH_SHORT).show();
                 mPause.setText(mScreenEncoder.isPaused() ? R.string.continue_ : R.string.pause);
             }
         });
@@ -182,6 +183,7 @@ public class MainActivity extends AppCompatActivity {
                 mStatus.setText(mFileChooser.getStatus());
                 if(mFileChooser.mIsPauseSelect) {
                     mFileChooser.mIsPauseSelect = false;
+                    mPauseFramesProvider = null;
                     String path = mFileChooser.getPausePath();
                     int i = path.lastIndexOf('.');
                     if (i > 0) {
