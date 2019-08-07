@@ -50,7 +50,7 @@ class VideoPictureFileChooser {
     String getStatus() {
         StringBuilder builder = new StringBuilder("selected videos:")
                 .append(mVideoFilePath == null ? 0 : 1)
-                .append(" images: ").append(mImageFilePathes.size()).append("\n");
+                .append(" mPauseFrames: ").append(mImageFilePathes.size()).append("\n");
         if(mVideoFilePath != null) builder.append(mVideoFilePath).append("\n");
         for(String s : mImageFilePathes) builder.append(s).append("\n");
         return builder.toString();

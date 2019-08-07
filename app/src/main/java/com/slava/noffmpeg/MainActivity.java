@@ -3,6 +3,8 @@ package com.slava.noffmpeg;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
@@ -23,12 +25,15 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.slava.noffmpeg.mediaworkers.Decoder;
+import com.slava.noffmpeg.mediaworkers.EncodedFrame;
 import com.slava.noffmpeg.mediaworkers.Encoder;
 import com.slava.noffmpeg.mediaworkers.PauseMaker;
 import com.slava.noffmpeg.mediaworkers.Size;
 import com.slava.noffmpeg.mediaworkers.VideoProcessor;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -57,6 +62,8 @@ public class MainActivity extends AppCompatActivity {
     private MediaProjection mMediaProjection;
     private Size mVideoSize = new Size(1280, 720);
     private HandlerThread mRenderThread = new HandlerThread("render_thread");
+    private boolean mJustSwitched = false;
+    List<EncodedFrame> mPauseFrames = new ArrayList<>();
 
 
     @Override
@@ -95,13 +102,21 @@ public class MainActivity extends AppCompatActivity {
         });
         mStatus.setText(mFileChooser.getStatus());
         mPauseMaker.setImage(getResources(), R.raw.i);
-        mPause.setOnClickListener(v -> mPause.setText(mPauseMaker.changeStatus() ? R.string.continue_ : R.string.pause));
+        mPause.setOnClickListener(v -> {
+            mPause.setText(mPauseMaker.changeStatus() ? R.string.continue_ : R.string.pause);
+            if(mScreenEncoder != null) {
+                if(mScreenEncoder.isPaused()) mScreenEncoder.resume();
+                else mScreenEncoder.setPause(mPauseFrames.get(0));
+            }
+            //if(!mPauseMaker.mIsPaused) mJustSwitched = true;
+        });
         mSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if(isChecked) mPauseMaker.setGif(getResources(), R.raw.giphy);
             else mPauseMaker.setImage(getResources(), R.raw.i);
         });
         mRenderThread.start();
         mDrainHandler = new Handler(mRenderThread.getLooper());
+        generatePauseImages();
     }
 
     private void processFile2File() {
@@ -152,7 +167,14 @@ public class MainActivity extends AppCompatActivity {
     private void drain() {
         mDrainHandler.removeCallbacks(this::drain);
         if (mScreenEncoder == null) return;
-        while (mScreenEncoder.encodeFrame(mPauseMaker.process(mScreenEncoder.getSurface(1), mVideoSize) ? 1 : 0));
+        /*if(mPauseMaker.mIsPaused) {
+            Log.v("Decoder", "write pause frame");
+            mScreenEncoder.writeEncodedData(mPauseFrames.get(0));
+        } else {*/
+            //if(mJustSwitched) mScreenEncoder.writeSavedIframe();
+            while (mScreenEncoder.encodeFrame(0));
+            mJustSwitched = false;
+       // }
         mDrainHandler.postDelayed(this::drain, 10);
     }
 
@@ -172,5 +194,13 @@ public class MainActivity extends AppCompatActivity {
                 mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(0),null, null);
                 mDrainHandler.postDelayed(this::drain, 10);
             }
+    }
+
+    private void generatePauseImages() {
+        List<Bitmap> in = new ArrayList<>();
+        Bitmap pause = BitmapFactory.decodeResource(getResources(), R.raw.i);
+        for(int i = 0; i < 16; i++) in.add(pause);
+        mPauseFrames.clear();
+        Encoder.getEncodedFrames(in, mPauseFrames, mVideoSize, 1);
     }
 }
