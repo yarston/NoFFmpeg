@@ -2,10 +2,17 @@
     <string name="app_name">NoFFmpeg</string>
     <string name="choose_video">Выбери видео</string>
     <string name="choose_images">Выбери картинки</string>
-    <string name="do_render">Отрендерить</string>
+    <string name="do_render">Рендеринг</string>
     <string name="bpp">Bits per pixel: %.2f</string>
     <string name="pause">Пауза</string>
     <string name="continue_">Продолжить</string>
     <string name="animated_static">animated/static</string>
     <string name="screen_record">Запись экрана</string>
+    <string name="choose_pause">Выбери паузу</string>
+    <string name="file_not_suitable">Файл не подходит!</string>
+    <string-array name="pause_vars">
+        <item>Gif</item>
+        <item>Image</item>
+        <item>Video</item>
+    </string-array>
 </resources>

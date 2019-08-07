@@ -9,7 +9,7 @@ import android.util.Log;
 import android.view.Surface;
 
 import com.slava.noffmpeg.frameproviders.EncodedFrame;
-import com.slava.noffmpeg.frameproviders.FrameProvider;
+import com.slava.noffmpeg.frameproviders.FramesProvider;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -25,7 +25,7 @@ public class Encoder {
     private MediaMuxer mMuxer = null;
     private int mFramesEncoded = 0;
     private int mFrameRate = 30;
-    private FrameProvider mPauseFrame = null;
+    private FramesProvider mPauseFrame = null;
     private boolean mRequestResume = false;
     private boolean mRequestKeyFrame = false;
     private MediaCodec mEncoder;
@@ -41,13 +41,7 @@ public class Encoder {
     public Encoder(String path, Size size, MediaFormat inputFormat, float bitsPerPixel, int n) {
         if (inputFormat != null && inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE))
             mFrameRate = inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE);
-
-        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, size.width, size.height);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, mFrameRate);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
-        Log.i("Encoder", "format: " + format);
+        MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
         try {
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             mEncoder = MediaCodec.createEncoderByType("video/avc");
@@ -70,15 +64,12 @@ public class Encoder {
 
     public void writeEncodedData(EncodedFrame frame) {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        ByteBuffer bb = ByteBuffer.wrap(frame.data);
         info.presentationTimeUs = (mFramesEncoded++) * 1000000 / mFrameRate;
         info.offset = 0;
         info.size = frame.data.length;
         info.flags = 9;
-        mMuxer.writeSampleData(mVideoTrackIndex, bb, info);
+        mMuxer.writeSampleData(mVideoTrackIndex, ByteBuffer.wrap(frame.data), info);
     }
-
-
 
     public boolean encodeFrame() {
         if (isPaused() && !mRequestResume) {
@@ -138,7 +129,7 @@ public class Encoder {
         return (mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) == 0 || ((mInfo.flags & BUFFER_FLAG_CODEC_CONFIG) != 0);
     }
 
-    public void setPause(FrameProvider pauseFrame) {
+    public void setPause(FramesProvider pauseFrame) {
         if (mPauseFrame == null) mPauseFrame = pauseFrame;
     }
 

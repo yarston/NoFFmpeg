@@ -9,9 +9,12 @@ import android.media.MediaFormat;
 import android.util.Log;
 import android.view.Surface;
 
+import androidx.annotation.Nullable;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 
 import static android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG;
@@ -23,11 +26,17 @@ import static com.slava.noffmpeg.mediaworkers.Encoder.getDefaultFormat;
  * Предоставляет уже закодированные в h264 кадры, которые можно напрямую заливать в Muxer
  */
 
-public abstract class FrameProvider {
+public abstract class FramesProvider {
 
-    public abstract EncodedFrame next();
+    private final List<EncodedFrame> mFrames = new ArrayList<>();
+    private int mIndex = 0;
 
-    public static void getEncodedFrames(List<Bitmap> in, List<EncodedFrame> out, int width, int height, float bitsPerPixel) {
+    @Nullable
+    public EncodedFrame next() {
+        return mFrames.isEmpty() ? null : mFrames.get(mIndex == mFrames.size() - 1 ? (mIndex = 0) : mIndex++);
+    }
+
+    void getEncodedFrames(ImageCallback in, int width, int height, float bitsPerPixel) {
         MediaFormat format = getDefaultFormat(width, height, 30, bitsPerPixel);
         MediaCodec encoder;
         try {
@@ -42,9 +51,8 @@ public abstract class FrameProvider {
         Rect area = new Rect(0, 0, width, height);
         Paint paint = new Paint();
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-
-        for(Bitmap bmp : in) {
-            if (bmp == null) continue;
+        Bitmap bmp;
+        while((bmp = in.next()) != null) {
             Canvas canvas = surface.lockCanvas(area);
             canvas.drawBitmap(bmp, null, area, paint);
             surface.unlockCanvasAndPost(canvas);
@@ -72,8 +80,12 @@ public abstract class FrameProvider {
                 Log.d("Encoder", "outIndex " + outIndex);
             } while (outIndex != INFO_TRY_AGAIN_LATER || (info.flags & BUFFER_FLAG_CODEC_CONFIG) != 0);
             byte[] bytes = baos.toByteArray();
-            out.add(new EncodedFrame(bytes, info.flags));
+            mFrames.add(new EncodedFrame(bytes, info.flags));
             Log.d("Encoder", "image buffer: " + bytes.length + "\n---");
         }
+    }
+
+    interface ImageCallback {
+        Bitmap next();
     }
 }

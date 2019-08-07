@@ -14,17 +14,21 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
+import android.view.View;
+import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
-import android.widget.Switch;
+import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.slava.noffmpeg.frameproviders.FrameProvider;
+import com.slava.noffmpeg.frameproviders.FramesProvider;
 import com.slava.noffmpeg.frameproviders.GifFramesProvider;
-import com.slava.noffmpeg.frameproviders.ImageFrameProvider;
+import com.slava.noffmpeg.frameproviders.ImageFramesProvider;
+import com.slava.noffmpeg.frameproviders.VideoFramesProvider;
 import com.slava.noffmpeg.mediaworkers.Decoder;
 import com.slava.noffmpeg.mediaworkers.Encoder;
 import com.slava.noffmpeg.mediaworkers.Size;
@@ -48,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.textStatus) TextView mStatus;
     @BindView(R.id.seekBar) SeekBar mSeekBar;
     @BindView(R.id.textBpp) TextView mTextBpp;
-    @BindView(R.id.switch1) Switch mSwitch;
+    @BindView(R.id.btn_select_res) Spinner mSelect;
 
     private static final float BPP_STEP = 0.05f;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
@@ -58,7 +62,7 @@ public class MainActivity extends AppCompatActivity {
     private MediaProjection mMediaProjection;
     private Size mVideoSize = new Size(1280, 720);
     private HandlerThread mRenderThread = new HandlerThread("render_thread");
-    private FrameProvider mPauseFramesProvider = null;
+    private FramesProvider mPauseFramesProvider = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,17 +102,27 @@ public class MainActivity extends AppCompatActivity {
         mPause.setOnClickListener(v -> {
             if(mScreenEncoder != null) {
                 if(mScreenEncoder.isPaused()) mScreenEncoder.resume();
-                else mScreenEncoder.setPause(mPauseFramesProvider);
+                else if(mPauseFramesProvider != null) mScreenEncoder.setPause(mPauseFramesProvider);
                 mPause.setText(mScreenEncoder.isPaused() ? R.string.continue_ : R.string.pause);
             }
         });
-        mSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if(isChecked) mPauseFramesProvider = new GifFramesProvider();// mPauseMaker.setGif(getResources(), R.raw.giphy);
-            else mPauseFramesProvider = new ImageFrameProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height);
+
+        mSelect.setSelection(0, false);
+        mSelect.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                mFileChooser.choosePause(MainActivity.this, position);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+                mFileChooser.choosePause(MainActivity.this, mSelect.getSelectedItemPosition());
+            }
         });
+
         mRenderThread.start();
         mDrainHandler = new Handler(mRenderThread.getLooper());
-        mPauseFramesProvider = new ImageFrameProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height);
+        mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, 1.0f);
     }
 
     private void processFile2File() {
@@ -164,9 +178,31 @@ public class MainActivity extends AppCompatActivity {
 
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         if (resultCode == Activity.RESULT_OK)
-            if (mFileChooser.processResult(requestCode, intent))
+            if (mFileChooser.processResult(requestCode, intent)) {
                 mStatus.setText(mFileChooser.getStatus());
-            else if (requestCode == REQUEST_MEDIA_PROJECTION) {
+                if(mFileChooser.mIsPauseSelect) {
+                    mFileChooser.mIsPauseSelect = false;
+                    String path = mFileChooser.getPausePath();
+                    int i = path.lastIndexOf('.');
+                    if (i > 0) {
+                        switch (path.substring(i + 1)) {
+                            case "png":
+                            case "jpg":
+                            case "jpeg":
+                                Executors.newSingleThreadExecutor().submit(()->mPauseFramesProvider = new ImageFramesProvider(path, mVideoSize.width, mVideoSize.height, 1.0f));
+                                break;
+                            case "gif":
+                                Executors.newSingleThreadExecutor().submit(()->mPauseFramesProvider = new GifFramesProvider(path, mVideoSize.width, mVideoSize.height, 1.0f));
+                                break;
+                            case "mp4":
+                                Executors.newSingleThreadExecutor().submit(()->mPauseFramesProvider = new VideoFramesProvider(path, mVideoSize.width, mVideoSize.height, 1.0f));
+                                break;
+                            default:
+                                Toast.makeText(this, R.string.file_not_suitable, Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                }
+            } else if (requestCode == REQUEST_MEDIA_PROJECTION) {
                 MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
                 mMediaProjection = manager.getMediaProjection(resultCode, intent);
                 DisplayManager dm = (DisplayManager)getSystemService(Context.DISPLAY_SERVICE);

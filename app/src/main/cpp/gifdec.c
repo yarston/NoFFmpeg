@@ -471,29 +471,29 @@ gd_GIF *data;
 
 
 JNIEXPORT jint JNICALL
-Java_com_slava_noffmpeg_bitmapprovider_GifJniProvider_getWidth(JNIEnv *env, jobject obj) {
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_getWidth(JNIEnv *env, jobject obj) {
     return (jint) data->width;
 }
 
 JNIEXPORT jint JNICALL
-Java_com_slava_noffmpeg_bitmapprovider_GifJniProvider_getHeight(JNIEnv *env, jobject obj) {
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_getHeight(JNIEnv *env, jobject obj) {
     return (jint) data->height;
 }
 
-JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_bitmapprovider_GifJniProvider_fillNextBitmap(JNIEnv *env, jobject obj, jobject bitmap) {
+JNIEXPORT jint JNICALL
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_fillNextBitmap(JNIEnv *env, jobject obj, jobject bitmap) {
     AndroidBitmapInfo info;
     uint32_t *pixels;
-    int ret;
+    int ret = -1;
 
     if ((ret = AndroidBitmap_getInfo(env, bitmap, &info)) < 0) {
         LOGE("AndroidBitmap_getInfo() failed ! error=%d", ret);
-        return;
+        return ret;
     }
 
     if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
         LOGE("Bitmap format is not RGBA_8888 !");
-        return;
+        return ret;
     }
 
     if ((ret = AndroidBitmap_lockPixels(env, bitmap, (void **) &pixels)) < 0) {
@@ -501,14 +501,14 @@ Java_com_slava_noffmpeg_bitmapprovider_GifJniProvider_fillNextBitmap(JNIEnv *env
     }
 
     ret = gd_get_frame(data);
-    if (ret == -1) return;
+    if (ret == -1) return ret;
     render_frame_argb(data, pixels);
     if (ret == 0) gd_rewind(data);
+    return ret;
 }
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_bitmapprovider_GifJniProvider_openGifFd(JNIEnv *env, jclass type,
-                                                                jobject fd_, jlong off, jlong len) {
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_openGifFd(JNIEnv *env, jclass type, jobject fd_, jlong off, jlong len) {
     jclass fdClass = (*env)->FindClass(env, "java/io/FileDescriptor");
     if (fdClass != NULL) {
         jfieldID fdClassDescriptorFieldID = (*env)->GetFieldID(env, fdClass, "descriptor", "I");
@@ -524,4 +524,10 @@ Java_com_slava_noffmpeg_bitmapprovider_GifJniProvider_openGifFd(JNIEnv *env, jcl
             data = gd_open_gif(myfd, off);
         }
     }
+}
+
+JNIEXPORT void JNICALL
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_closeGifFd(JNIEnv *env, jclass type) {
+    gd_close_gif(data);
+    data = NULL;
 }

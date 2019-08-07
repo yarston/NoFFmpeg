@@ -52,7 +52,7 @@ public class VideoProcessor {
         surface.unlockCanvasAndPost(canvas);
     }
 
-    private static native void cvtYUV_420_888_to_RGBA(Bitmap  bitmap, ByteBuffer buff_y, ByteBuffer buff_u, ByteBuffer buff_v);
+    public static native void cvtYUV_420_888_to_RGBA(Bitmap  bitmap, ByteBuffer buff_y, ByteBuffer buff_u, ByteBuffer buff_v);
 
     static {
         System.loadLibrary("yuv2rgb");
