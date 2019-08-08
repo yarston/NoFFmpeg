@@ -74,6 +74,7 @@ public class Encoder {
     public boolean encodeFrame() {
         if (isPaused() && !mRequestResume) {
             writeEncodedData(mIsFirstPauseFrame ? mPauseFrame.first() : mPauseFrame.next());
+            mIsFirstPauseFrame = false;
             return false;
         }
 
