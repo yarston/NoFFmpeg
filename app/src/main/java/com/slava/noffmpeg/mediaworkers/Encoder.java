@@ -38,7 +38,7 @@ public class Encoder {
     //2. Писать экрвн в промежуточный канвас, рисовать его на холсте и отправлять в канвас кодека, но это оверхэд
     //3. Использовать 2 кодека со своими холстами и переключать их в микшере - так и сделаю.
 
-    public Encoder(String path, Size size, MediaFormat inputFormat, float bitsPerPixel, int n) {
+    public Encoder(String path, Size size, MediaFormat inputFormat, float bitsPerPixel, boolean withSurface) {
         if (inputFormat != null && inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE))
             mFrameRate = inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE);
         MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
@@ -46,7 +46,7 @@ public class Encoder {
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             mEncoder = MediaCodec.createEncoderByType("video/avc");
             mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-            mSurface = mEncoder.createInputSurface();
+            if(withSurface) mSurface = mEncoder.createInputSurface();
             mEncoder.start();
         } catch (IOException e) {
             e.printStackTrace();
@@ -60,6 +60,14 @@ public class Encoder {
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
         return format;
+    }
+
+    public void writeBuffer(ByteBuffer inBuffer, MediaCodec.BufferInfo info) {
+        int inIndex = mEncoder.dequeueInputBuffer(TIMEOUT_US);
+        if (inIndex < 0) return;
+        ByteBuffer buffer = mEncoder.getInputBuffer(inIndex);
+        buffer.put(inBuffer);
+        mEncoder.queueInputBuffer(inIndex, 0, info.size, info.presentationTimeUs, info.flags);
     }
 
     public void writeEncodedData(EncodedFrame frame) {
@@ -121,6 +129,7 @@ public class Encoder {
                         buffer.position(mInfo.offset);
                         buffer.limit(mInfo.offset + mInfo.size);
                         mMuxer.writeSampleData(mVideoTrackIndex, buffer, mInfo);
+                        Log.v("Encoder", "write bytes:" + mInfo.size);
                     }
                 }
                 mEncoder.releaseOutputBuffer(outIndex, false);
@@ -152,12 +161,15 @@ public class Encoder {
 
     public void release() {
         if (mEncoder == null) return;
-        mEncoder.signalEndOfInputStream();
+        try {
+            mEncoder.signalEndOfInputStream();
+        } catch (Exception ignored) {
+        }
         mEncoder.stop();
         mEncoder.release();
         mMuxer.stop();
         mMuxer.release();
-        mSurface.release();
+        if(mSurface != null) mSurface.release();
         mEncoder = null;
         mSurface = null;
     }

@@ -128,16 +128,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void processFile2File() {
         long startTime = System.currentTimeMillis();
-        if(mFileChooser.getVideoPath() == null) return;
+        if (mFileChooser.getVideoPath() == null) return;
         Decoder decoder = new Decoder(mFileChooser.getVideoPath());
         Size size = decoder.getSize();
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size);
         Log.v("Decoder", "mVideoSize = " + size.width + " x " + size.height);
         File f = new File(Environment.getExternalStorageDirectory(), "out.mp4");
-        mScreenEncoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP, 1);
+        mScreenEncoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP, false);
 
-        Surface surface = mScreenEncoder.getSurface();
-        if(surface == null) return;
         AtomicInteger nFrames = new AtomicInteger();
         runOnUiThread(() -> {
             mProgress.setMax(decoder.getMaxFrames());
@@ -150,16 +148,21 @@ public class MainActivity extends AppCompatActivity {
 
         decoder.prepare(null, () -> {
             //if (!mPauseMaker.process(surface, size))
-            processor.process(surface, decoder.getOutputImage());
+            processor.process(decoder.mOutputBuffer, decoder.mInfo.offset);
             Log.v("Decoder", "frame " + nFrames);
+            mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
             mScreenEncoder.encodeFrame();
             mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
         });
 
          //for(int i = 0; i < 100; i++)decoder.decodeFrame();
         while (decoder.haveFrame()) decoder.decodeFrame();
-        decoder.release();
-        mScreenEncoder.release();
+        try {
+            decoder.release();
+            mScreenEncoder.release();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         runOnUiThread(() -> {
             mStatus.setText(String.format("completed in %.2f sec", (System.currentTimeMillis() - startTime) * 0.001f));
@@ -211,7 +214,7 @@ public class MainActivity extends AppCompatActivity {
                 Display defaultDisplay = dm.getDisplay(Display.DEFAULT_DISPLAY);
                 if (defaultDisplay == null) throw new RuntimeException("No display found.");
                 mScreenRecord.setText("Стоп");
-                mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, null, mSeekBar.getProgress() * BPP_STEP, 2);
+                mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, null, mSeekBar.getProgress() * BPP_STEP, true);
                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                 mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);
                 mDrainHandler.postDelayed(this::drain, 10);

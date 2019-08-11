@@ -21,12 +21,14 @@ public class Decoder {
     private int mFPS = 30;
     private String mVideoPath;
     private MediaFormat mFormat;
-    private MediaCodec.BufferInfo mInfo;
+    public MediaCodec.BufferInfo mInfo;
     private ByteBuffer[] mInputBuffers;
     private ByteBuffer[] mOutputBuffers;
     private Runnable mCallback;
+    private BufferCallback mBufferCallback;
     private boolean mIsReady = false;
     private Image mOutputImage;
+    public ByteBuffer mOutputBuffer;
 
     public Decoder(String videoPath) {
         mVideoPath = videoPath;
@@ -114,18 +116,11 @@ public class Decoder {
             case MediaCodec.INFO_TRY_AGAIN_LATER:
                 break;
             default:
-               // Log.v("decodeFrame", "outBuffer size " + outBuffer[outIndex].limit());
-                boolean doRender = mInfo.size != 0;
-                if(doRender) {
-                    mOutputImage = mDecoder.getOutputImage(outIndex);
-                    /*if(mOutputImage!= null) {
-                        mOutputImage.close();
-                        mOutputImage = null;
-                    }*/
+                if (mInfo.size > 0) {
+                    mOutputBuffer = mDecoder.getOutputBuffer(outIndex);
                     mCallback.run();
                 }
-                if(outIndex >= 0) mDecoder.releaseOutputBuffer(outIndex, false);
-
+                if (outIndex >= 0) mDecoder.releaseOutputBuffer(outIndex, false);
                 break;
         }
     }
@@ -143,5 +138,9 @@ public class Decoder {
 
     public Image getOutputImage() {
         return mOutputImage;
+    }
+
+    public void setBufferCallback(BufferCallback mBufferCallback) {
+        this.mBufferCallback = mBufferCallback;
     }
 }

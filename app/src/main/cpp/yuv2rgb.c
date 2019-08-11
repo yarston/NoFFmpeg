@@ -118,3 +118,74 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(J
 
     AndroidBitmap_unlockPixels(env, bitmap);
 }
+
+/*
+https://www.pcmag.com/encyclopedia/term/55166/yuv-rgb-conversion-formulas
+   Y = 0.299R + 0.587G + 0.114B
+   U = 0.492 (B-Y)
+   V = 0.877 (R-Y)
+
+   It can also be represented as:
+
+   Y =  0.299R + 0.587G + 0.114B
+   U = -0.147R - 0.289G + 0.436B
+   V =  0.615R - 0.515G - 0.100B
+
+   From YUV to RGB
+
+   R = Y + 1.140V
+   G = Y - 0.395U - 0.581V
+   B = Y + 2.032U
+*/
+JNIEXPORT void JNICALL
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUV(JNIEnv *env, jobject obj,
+                                                            jobject bitmap, jint bx, jint by,
+                                                            jint w, jint h, jint off, jobject buff_) {
+
+    AndroidBitmapInfo info;
+    uint32_t *pixels;
+    int ret;
+
+    if ((ret = AndroidBitmap_getInfo(env, bitmap, &info)) < 0) {
+        LOGE("AndroidBitmap_getInfo() failed ! error=%d", ret);
+        return;
+    }
+
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        LOGE("Bitmap format is not RGBA_8888 !");
+        return;
+    }
+
+    if ((ret = AndroidBitmap_lockPixels(env, bitmap, (void**) &pixels)) < 0) {
+        LOGE("AndroidBitmap_lockPixels() failed ! error=%d", ret);
+    }
+
+    int bw = info.width, bh = info.height;
+
+    uint8_t *buff_y = (*env)->GetDirectBufferAddress(env, buff_);
+    uint8_t *buff_u = buff_y + w * h;
+    uint8_t *buff_v = buff_u + w * h / 4;
+
+    for(int i = 0; i < bh; i++) {
+        for(int j = 0; j < bw; j++) {
+            uint32_t pix = pixels[j + i * bw];
+            float r = pix & 0xFF;
+            float g = (pix >> 8) & 0xFF;
+            float b = (pix >> 16) & 0xFF;
+
+            int32_t y = (int32_t) (0.299 * r + 0.587 * g + 0.114 * b);
+            int32_t u = (int32_t) (128 + 0.492 * (b - y));
+            int32_t v = (int32_t) (128 + 0.877 * (r - y));
+
+            CLAMP(y);
+            CLAMP(u);
+            CLAMP(v);
+
+            buff_y[j + bx + (i + by) * w] = (uint8_t) (y);
+            buff_u[(((j + bx) / 2) + ((i + by) / 2) * (w / 2))] = (uint8_t) (u);
+            buff_v[(((j + bx) / 2) + ((i + by) / 2) * (w / 2))] = (uint8_t) (v);
+        }
+    }
+
+    AndroidBitmap_unlockPixels(env, bitmap);
+}
