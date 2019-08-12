@@ -148,7 +148,7 @@ public class MainActivity extends AppCompatActivity {
 
         decoder.prepare(null, () -> {
             //if (!mPauseMaker.process(surface, size))
-            processor.process(decoder.mOutputBuffer, decoder.mInfo.offset);
+            processor.process(decoder.mOutputBuffer);
             Log.v("Decoder", "frame " + nFrames);
             mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
             mScreenEncoder.encodeFrame();

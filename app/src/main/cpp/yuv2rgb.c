@@ -137,10 +137,10 @@ https://www.pcmag.com/encyclopedia/term/55166/yuv-rgb-conversion-formulas
    G = Y - 0.395U - 0.581V
    B = Y + 2.032U
 */
+
+//Это не оптимизированный метод для рисования RGB изображений поверх YUV420 буффера, как отправная точка для дальнейшей доработки
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUV(JNIEnv *env, jobject obj,
-                                                            jobject bitmap, jint bx, jint by,
-                                                            jint w, jint h, jint off, jobject buff_) {
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawRGBoverYUV(JNIEnv *env, jobject obj, jobject bitmap, jint bx, jint by, jint w, jint h, jint off, jobject buff_) {
 
     AndroidBitmapInfo info;
     uint32_t *pixels;
@@ -188,4 +188,132 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUV(JNIEnv *env, jobject
     }
 
     AndroidBitmap_unlockPixels(env, bitmap);
+}
+
+JNIEXPORT void JNICALL
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV(JNIEnv *env, jobject obj, jobject src , jobject dst, jint px, jint py, jint pw, jint ph, jint w, jint h) {
+
+    uint8_t *src_y = (*env)->GetDirectBufferAddress(env, src);
+    uint8_t *src_u = src_y + pw * ph;
+    uint8_t *src_v = src_u + pw * ph / 4;
+    uint8_t *src_a = src_v + pw * ph / 4;
+
+    uint8_t *dst_y = (*env)->GetDirectBufferAddress(env, dst);
+    uint8_t *dst_u = dst_y + w * h;
+    uint8_t *dst_v = dst_u + w * h / 4;
+
+    for(int i = 0; i < ph / 2; i++) {
+        uint8_t *dst_y_line0 = dst_y + px + (i * 2 + py) * w, *dst_y_line1 = dst_y_line0 + w;
+        uint8_t *src_y_line0 = src_y + i * 2 * pw, *src_y_line1 = src_y_line0 + pw;
+
+        int baseQuartPositionSrc1 = i * pw / 2;
+        int baseQuartPositionDst1 = (px / 2) + (i + py / 2) * w / 2;
+
+        uint8_t *src_u_line = src_u + baseQuartPositionSrc1;
+        uint8_t *dst_u_line = dst_u + baseQuartPositionDst1;
+        uint8_t *src_v_line = src_v + baseQuartPositionSrc1;
+        uint8_t *dst_v_line = dst_v + baseQuartPositionDst1;
+        uint8_t *src_a_line = src_a + baseQuartPositionSrc1;
+
+        for(int j = 0; j < pw / 2; j++) {
+            uint32_t a = *src_a_line, ra = 255 - a;
+            *dst_u_line = (uint8_t) ((((uint32_t) *src_u_line) * a + ((uint32_t) *dst_u_line) * ra) >> 8);
+            *dst_v_line = (uint8_t) ((((uint32_t) *src_v_line) * a + ((uint32_t) *dst_v_line) * ra) >> 8);
+            src_u_line++;
+            dst_u_line++;
+            src_v_line++;
+            dst_v_line++;
+            src_a_line++;
+
+            *dst_y_line0 = (uint8_t) ((((uint32_t) *src_y_line0) * a + ((uint32_t) *dst_y_line0) * ra) >> 8);
+            dst_y_line0++;
+            src_y_line0++;
+            *dst_y_line0 = (uint8_t) ((((uint32_t) *src_y_line0) * a + ((uint32_t) *dst_y_line0) * ra) >> 8);
+            dst_y_line0++;
+            src_y_line0++;
+            *dst_y_line1 = (uint8_t) ((((uint32_t) *src_y_line1) * a + ((uint32_t) *dst_y_line1) * ra) >> 8);
+            dst_y_line1++;
+            src_y_line1++;
+            *dst_y_line1 = (uint8_t) ((((uint32_t) *src_y_line1) * a + ((uint32_t) *dst_y_line1) * ra) >> 8);
+            dst_y_line1++;
+            src_y_line1++;
+        }
+    }
+}
+
+#define GETR(x) ((x & 0xFF))
+#define GETG(x) (((x >> 8) & 0xFF))
+#define GETB(x) (((x >> 16) & 0xFF))
+#define GETA(x) (((x >> 24) & 0xFF))
+
+JNIEXPORT void JNICALL
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_bitmapRGBA8888toYUVA(JNIEnv *env, jobject obj, jobject bmp, jobject yuva, jint w, jint h, jboolean toRight, jboolean toBottom) {
+
+    AndroidBitmapInfo info;
+    uint32_t *pixels;
+    int ret;
+
+    if ((ret = AndroidBitmap_getInfo(env, bmp, &info)) < 0) {
+        LOGE("AndroidBitmap_getInfo() failed ! error=%d", ret);
+        return;
+    }
+
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        LOGE("Bitmap format is not RGBA_8888 !");
+        return;
+    }
+
+    if ((ret = AndroidBitmap_lockPixels(env, bmp, (void**) &pixels)) < 0) {
+        LOGE("AndroidBitmap_lockPixels() failed ! error=%d", ret);
+    }
+
+    uint8_t *buff_y = (*env)->GetDirectBufferAddress(env, yuva);
+    uint8_t *buff_u = buff_y + w * h;
+    uint8_t *buff_v = buff_u + w * h / 4;
+    uint8_t *buff_a = buff_v + w * h / 4;
+
+    for(int i = 0; i < h - 1; i += 2) {
+
+        int position = i * w;
+        int baseQuartPosition = (i / 2) * (w / 2);
+
+        uint32_t *src_line0   = pixels + position, *src_line1 = src_line0 + w;
+        uint8_t  *dst_y_line0 = buff_y + position, *dst_y_line1 = dst_y_line0 + w;
+        uint8_t  *dst_v_line  = buff_v + baseQuartPosition;
+        uint8_t  *dst_u_line  = buff_u + baseQuartPosition;
+        uint8_t  *dst_a_line  = buff_a + baseQuartPosition;
+
+        for(int j = 0; j < w - 1; j += 2) {
+
+            uint32_t srcpix0 = *src_line0++;
+            uint32_t srcpix1 = *src_line0++;
+            uint32_t srcpix2 = *src_line1++;
+            uint32_t srcpix3 = *src_line1++;
+
+            int32_t r0 = GETR(srcpix0), g0 = GETG(srcpix0), b0 = GETB(srcpix0);
+            int32_t r1 = GETR(srcpix1), g1 = GETG(srcpix1), b1 = GETB(srcpix1);
+            int32_t r2 = GETR(srcpix2), g2 = GETG(srcpix2), b2 = GETB(srcpix2);
+            int32_t r3 = GETR(srcpix3), g3 = GETG(srcpix3), b3 = GETB(srcpix3);
+
+            int32_t r_mid = (r0 + r1 + r2 + r3) / 4;
+            int32_t g_mid = (g0 + g1 + g2 + g3) / 4;
+            int32_t b_mid = (b0 + b1 + b2 + b3) / 4;
+
+            int32_t u_mid = 128 + (-9634 * r_mid - 18940 * g_mid + 28574 * b_mid) / 65536;
+            int32_t v_mid = 128 + (40305 * r_mid - 33751 * g_mid -  6554 * b_mid) / 65536;
+            //u_mid гарантировано вписывается в 0 < x < 255, поэтому его ограничивать не нужно
+            CLAMP(v_mid);
+
+            *dst_u_line++ = (uint8_t) u_mid;
+            *dst_v_line++ = (uint8_t) v_mid;
+
+            *dst_a_line++ = (uint8_t) ((GETA(srcpix0) + GETA(srcpix1) + GETA(srcpix2) + GETA(srcpix3)) / 4);
+            *dst_y_line0++ = (uint8_t) ((r0 * 19595 + g0 * 38470 + b0 * 7471) >> 16);
+            *dst_y_line0++ = (uint8_t) ((r1 * 19595 + g1 * 38470 + b1 * 7471) >> 16);
+            *dst_y_line1++ = (uint8_t) ((r2 * 19595 + g2 * 38470 + b2 * 7471) >> 16);
+            *dst_y_line1++ = (uint8_t) ((r3 * 19595 + g3 * 38470 + b3 * 7471) >> 16);
+        }
+    }
+
+    AndroidBitmap_unlockPixels(env, bmp);
 }
