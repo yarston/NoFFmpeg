@@ -1,9 +1,7 @@
-#include "gifdec.h"
-
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -11,14 +9,48 @@
 #include <jni.h>
 #include <android/bitmap.h>
 #include <android/log.h>
-
+#include <malloc.h>
 
 #define  LOG_TAG    "GifJniProvider"
-#define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
+
+typedef struct gd_Palette {
+    int size;
+    uint8_t colors[0x100 * 4];
+} gd_Palette;
+
+typedef struct gd_GCE {
+    uint16_t delay;
+    uint8_t tindex;
+    uint8_t disposal;
+    int input;
+    int transparency;
+} gd_GCE;
+
+typedef struct gd_GIF {
+    FILE *fd;
+    long anim_start;
+    uint16_t width, height;
+    uint16_t depth;
+    uint16_t loop_count;
+    gd_GCE gce;
+    gd_Palette *palette;
+    gd_Palette lct, gct;
+    void (*plain_text)(
+            struct gd_GIF *gif, uint16_t tx, uint16_t ty,
+            uint16_t tw, uint16_t th, uint8_t cw, uint8_t ch,
+            uint8_t fg, uint8_t bg
+    );
+    void (*comment)(struct gd_GIF *gif);
+    void (*application)(struct gd_GIF *gif, char id[8], char auth[3]);
+    uint16_t fx, fy, fw, fh;
+    uint8_t bgindex;
+    uint32_t *canvas;
+    uint8_t *frame;
+} gd_GIF;
 
 typedef struct Entry {
     uint16_t length;
@@ -32,39 +64,46 @@ typedef struct Table {
     Entry *entries;
 } Table;
 
-static uint16_t read_num(FILE *fd) {
+uint16_t read_num(FILE *fd) {
     uint8_t bytes[2];
     fread(bytes, 1, 2, fd);
     return bytes[0] + (((uint16_t) bytes[1]) << 8);
 }
 
-gd_GIF *gd_open_gif(const int fd, long offset) {
+void fix_pallete(gd_Palette *palette) {
+    uint8_t *rgb = palette->colors + (palette->size - 1) * 3;
+    uint8_t *rgba = palette->colors + (palette->size - 1) * 4;
+    for(; rgb >= palette->colors; rgb -= 3, rgba -= 4) {
+        rgba[0] = rgb[0];
+        rgba[1] = rgb[1];
+        rgba[2] = rgb[2];
+        rgba[3] = 0xFF;
+    }
+}
+
+gd_GIF *gd_open_gif(FILE *file) {
     uint8_t sigver[3];
     uint16_t width, height, depth;
     uint8_t fdsz, bgidx, aspect;
     int gct_sz;
     gd_GIF *gif = NULL;
-
-    FILE *myFile = fdopen(fd, "rb");
-    fseek(myFile, offset, SEEK_SET);
-
-    if (myFile == NULL) goto fail;
+    if (file == NULL) goto fail;
     // Header
-    fread(sigver, 1, 3, myFile);
+    fread(sigver, 1, 3, file);
     if (memcmp(sigver, "GIF", 3) != 0) {
         LOGE("invalid signature\n");
         goto fail;
     }
-    fread(sigver, 1, 3, myFile);
+    fread(sigver, 1, 3, file);
     if (memcmp(sigver, "89a", 3) != 0) {
         LOGE("invalid version\n");
         goto fail;
     }
-    width = read_num(myFile);
-    height = read_num(myFile);
+    width = read_num(file);
+    height = read_num(file);
     LOGE("width: %d height %d\n", width, height);
 
-    fread(&fdsz, 1, 1, myFile);
+    fread(&fdsz, 1, 1, file);
     // Presence of GCT
     if (!(fdsz & 0x80)) {
         LOGE("no global color table\n");
@@ -76,33 +115,44 @@ gd_GIF *gd_open_gif(const int fd, long offset) {
     // GCT Size
     gct_sz = 1 << ((fdsz & 0x07) + 1);
     // Background Color Index
-    fread(&bgidx, 1, 1, myFile);
+    fread(&bgidx, 1, 1, file);
     // Aspect Ratio
-    fread(&aspect, 1, 1, myFile);
+    fread(&aspect, 1, 1, file);
     // Create gd_GIF Structure.
-    gif = calloc(1, sizeof(*gif) + 4 * width * height);
+    gif = calloc(1, sizeof(*gif) + 5 * width * height);
     if (!gif) goto fail;
-    gif->fd = myFile;
+    gif->fd = file;
     gif->width = width;
     gif->height = height;
     gif->depth = depth;
     // Read GCT
     gif->gct.size = gct_sz;
-    fread(gif->gct.colors, 3, gif->gct.size, myFile);
+    fread(gif->gct.colors, 3, gif->gct.size, file);
+    fix_pallete(&gif->gct);
     gif->palette = &gif->gct;
     gif->bgindex = bgidx;
-    gif->canvas = (uint8_t *) &gif[1];
-    gif->frame = &gif->canvas[3 * width * height];
+    gif->canvas = (uint32_t*) &gif[1];
+    gif->frame  = (uint8_t*) &gif->canvas[width * height];
     if (gif->bgindex) memset(gif->frame, gif->bgindex, gif->width * gif->height);
-    gif->anim_start = ftell(myFile);
+    gif->anim_start = ftell(file);
     goto ok;
     fail:
-    fclose(myFile);
+    fclose(file);
     ok:
     return gif;
 }
 
-static void discard_sub_blocks(gd_GIF *gif) {
+gd_GIF *gd_open_gif_by_descpriptor(const int fd, long offset) {
+    FILE *file = fdopen(fd, "rb");
+    fseek(file, offset, SEEK_SET);
+    return gd_open_gif(file);
+}
+
+gd_GIF *gd_open_gif_by_path(const char* path) {
+    return gd_open_gif(fopen(path, "rb"));
+}
+
+void discard_sub_blocks(gd_GIF *gif) {
     uint8_t size;
     do {
         fread(&size, 1, 1, gif->fd);
@@ -110,7 +160,7 @@ static void discard_sub_blocks(gd_GIF *gif) {
     } while (size);
 }
 
-static void read_plain_text_ext(gd_GIF *gif) {
+void read_plain_text_ext(gd_GIF *gif) {
     if (gif->plain_text) {
         uint16_t tx, ty, tw, th;
         uint8_t cw, ch, fg, bg;
@@ -134,7 +184,7 @@ static void read_plain_text_ext(gd_GIF *gif) {
     discard_sub_blocks(gif);
 }
 
-static void read_graphic_control_ext(gd_GIF *gif) {
+void read_graphic_control_ext(gd_GIF *gif) {
     uint8_t rdit;
     /* Discard block size (always 0x04). */
     fseek(gif->fd, 1, SEEK_CUR);
@@ -158,7 +208,7 @@ void read_comment_ext(gd_GIF *gif) {
     discard_sub_blocks(gif);
 }
 
-static void read_application_ext(gd_GIF *gif) {
+void read_application_ext(gd_GIF *gif) {
     char app_id[8];
     char app_auth_code[3];
 
@@ -184,7 +234,7 @@ static void read_application_ext(gd_GIF *gif) {
     }
 }
 
-static void read_ext(gd_GIF *gif) {
+void read_ext(gd_GIF *gif) {
     uint8_t label;
     fread(&label, 1, 1, gif->fd);
     switch (label) {
@@ -205,7 +255,7 @@ static void read_ext(gd_GIF *gif) {
     }
 }
 
-static Table *new_table(int key_size) {
+Table *new_table(int key_size) {
     int key;
     int init_bulk = MAX(1 << (key_size + 1), 0x100);
     Table *table = malloc(sizeof(*table) + sizeof(Entry) * init_bulk);
@@ -223,7 +273,7 @@ static Table *new_table(int key_size) {
  *  0 on success
  *  +1 if key size must be incremented after this addition
  *  -1 if could not realloc table */
-static int add_entry(Table **tablep, uint16_t length, uint16_t prefix, uint8_t suffix) {
+int add_entry(Table **tablep, uint16_t length, uint16_t prefix, uint8_t suffix) {
     Table *table = *tablep;
     if (table->nentries == table->bulk) {
         table->bulk *= 2;
@@ -238,7 +288,7 @@ static int add_entry(Table **tablep, uint16_t length, uint16_t prefix, uint8_t s
     return 0;
 }
 
-static uint16_t get_key(gd_GIF *gif, int key_size, uint8_t *sub_len, uint8_t *shift, uint8_t *byte) {
+uint16_t get_key(gd_GIF *gif, int key_size, uint8_t *sub_len, uint8_t *shift, uint8_t *byte) {
     int bits_read;
     int rpad;
     int frag_size;
@@ -264,7 +314,7 @@ static uint16_t get_key(gd_GIF *gif, int key_size, uint8_t *sub_len, uint8_t *sh
 }
 
 /* Compute output index of y-th input line, in frame of height h. */
-static int interlaced_line_index(int h, int y) {
+int interlaced_line_index(int h, int y) {
     int p; /* number of lines in current pass */
 
     p = (h - 1) / 8 + 1;
@@ -285,7 +335,7 @@ static int interlaced_line_index(int h, int y) {
 
 /* Decompress image pixels.
  * Return 0 on success or -1 on out-of-memory (w.r.t. LZW code table). */
-static int read_image_data(gd_GIF *gif, int interlace) {
+int read_image_data(gd_GIF *gif, int interlace) {
     uint8_t sub_len, shift, byte;
     int init_key_size, key_size, table_is_full;
     int frm_off, str_len, p, x, y;
@@ -352,7 +402,7 @@ static int read_image_data(gd_GIF *gif, int interlace) {
 
 /* Read image.
  * Return 0 on success or -1 on out-of-memory (w.r.t. LZW code table). */
-static int read_image(gd_GIF *gif) {
+int read_image(gd_GIF *gif) {
     uint8_t fisrz;
     int interlace;
 
@@ -369,6 +419,7 @@ static int read_image(gd_GIF *gif) {
         /* Read LCT */
         gif->lct.size = 1 << ((fisrz & 0x07) + 1);
         fread(gif->lct.colors, 3, gif->lct.size, gif->fd);
+        fix_pallete(&gif->lct);
         gif->palette = &gif->lct;
     } else
         gif->palette = &gif->gct;
@@ -376,19 +427,24 @@ static int read_image(gd_GIF *gif) {
     return read_image_data(gif, interlace);
 }
 
-static void render_frame_argb(gd_GIF *gif, uint32_t *buffer) {
+#define GETR(x) ((x & 0xFF))
+#define GETG(x) (((x >> 8) & 0xFF))
+#define GETB(x) (((x >> 16) & 0xFF))
+
+void render_frame_argb(gd_GIF *gif, uint32_t *buffer) {
     int offset = gif->fy * gif->width + gif->fx, w = gif->fw, h = gif->fh;
     buffer += offset;
+    uint32_t *palette = (uint32_t*) &gif->palette->colors;
     if (gif->gce.transparency) {
         uint8_t tindex = gif->gce.tindex;
         for (int y = 0; y < h; y++) {
             for (int x = 0, pos = offset; x < w; x++, pos++) {
                 uint8_t index = gif->frame[pos];
-                uint8_t *color = (index == tindex) ? gif->canvas + pos * 3 : gif->palette->colors + index * 3;
-                uint32_t r = (uint32_t) color[0];
-                uint32_t g = (uint32_t) color[1];
-                uint32_t b = (uint32_t) color[2];
-                buffer[x] = 0xFF000000 | r | (g << 8) | (b << 16);
+                if(index == tindex) {
+                    buffer[x] = gif->canvas[pos];
+                } else {
+                    buffer[x] = palette[index];
+                }
             }
             offset += gif->width;
             buffer += gif->width;
@@ -397,11 +453,7 @@ static void render_frame_argb(gd_GIF *gif, uint32_t *buffer) {
         for (int y = 0; y < h; y++) {
             for (int x = 0, pos = offset; x < w; x++, pos++) {
                 uint8_t index = gif->frame[pos];
-                uint8_t *color = gif->palette->colors + index * 3;
-                uint32_t r = (uint32_t) color[0];
-                uint32_t g = (uint32_t) color[1];
-                uint32_t b = (uint32_t) color[2];
-                buffer[x] = 0xFF000000 | r | (g << 8) | (b << 16);
+                buffer[x] = palette[index];
             }
             offset += gif->width;
             buffer += gif->width;
@@ -409,29 +461,32 @@ static void render_frame_argb(gd_GIF *gif, uint32_t *buffer) {
     }
 }
 
-static void render_frame_rect(gd_GIF *gif, uint8_t *buffer) {
+void render_frame_rect(gd_GIF *gif, uint32_t *buffer) {
     int i = gif->fy * gif->width + gif->fx;
     for (int j = 0; j < gif->fh; j++) {
         for (int k = 0; k < gif->fw; k++) {
             uint8_t index = gif->frame[(gif->fy + j) * gif->width + gif->fx + k];
-            uint8_t *color = &gif->palette->colors[index * 3];
             if (!gif->gce.transparency || index != gif->gce.tindex)
-                memcpy(buffer + (i + k) * 3, color, 3);
+                buffer[i + k] = ((uint32_t *) &gif->palette->colors)[index];
         }
         i += gif->width;
     }
 }
 
-static void dispose(gd_GIF *gif) {
+void dispose(gd_GIF *gif) {
     int i, j, k;
-    uint8_t *bgcolor;
+    //uint8_t *bgcolor;
+    uint32_t bgcolor;
     switch (gif->gce.disposal) {
-        case 2: /* Restore to background color. */
-            bgcolor = &gif->palette->colors[gif->bgindex * 3];
+        case 2: // Restore to background color.
+            bgcolor = ((uint32_t*) &gif->palette->colors)[gif->bgindex];
+
             i = gif->fy * gif->width + gif->fx;
             for (j = 0; j < gif->fh; j++) {
-                for (k = 0; k < gif->fw; k++)
-                    memcpy(&gif->canvas[(i + k) * 3], bgcolor, 3);
+                for (k = 0; k < gif->fw; k++) {
+                    gif->canvas[(i + k)] = bgcolor;
+                }
+                //memcpy(&gif->canvas[(i + k) * 4], bgcolor, 3);
                 i += gif->width;
             }
             break;
@@ -463,25 +518,24 @@ void gd_rewind(gd_GIF *gif) {
 }
 
 void gd_close_gif(gd_GIF *gif) {
-    fclose(gif->fd);
-    free(gif);
-}
-
-gd_GIF *data;
-
-
-JNIEXPORT jint JNICALL
-Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_getWidth(JNIEnv *env, jobject obj) {
-    return (jint) data->width;
+    if(gif && gif->fd) {
+        fclose(gif->fd);
+        free(gif);
+    }
 }
 
 JNIEXPORT jint JNICALL
-Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_getHeight(JNIEnv *env, jobject obj) {
-    return (jint) data->height;
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_getWidth(JNIEnv *env, jobject obj, jlong gifptr) {
+    return (jint) ((gd_GIF*) gifptr)->width;
 }
 
 JNIEXPORT jint JNICALL
-Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_fillNextBitmap(JNIEnv *env, jobject obj, jobject bitmap) {
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_getHeight(JNIEnv *env, jobject obj, jlong gifptr) {
+    return (jint) ((gd_GIF*) gifptr)->height;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_fillNextBitmap(JNIEnv *env, jobject obj, jobject bitmap, jlong gifptr) {
     AndroidBitmapInfo info;
     uint32_t *pixels;
     int ret = -1;
@@ -500,6 +554,7 @@ Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_fillNextBitmap(JNIEnv *
         LOGE("AndroidBitmap_lockPixels() failed ! error=%d", ret);
     }
 
+    gd_GIF* data = (gd_GIF*) gifptr;
     ret = gd_get_frame(data);
     if (ret == -1) return ret;
     render_frame_argb(data, pixels);
@@ -507,27 +562,29 @@ Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_fillNextBitmap(JNIEnv *
     return ret;
 }
 
-JNIEXPORT void JNICALL
+JNIEXPORT jlong JNICALL
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_openGifbyPath(JNIEnv *env, jclass type, jstring pathObj) {
+    const char *path = (*env)->GetStringUTFChars(env, pathObj, NULL ) ;
+    gd_GIF *gif = gd_open_gif_by_path(path);
+    (*env)->ReleaseStringUTFChars(env, pathObj, path);
+    return (jlong) gif;
+}
+
+JNIEXPORT jlong JNICALL
 Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_openGifFd(JNIEnv *env, jclass type, jobject fd_, jlong off, jlong len) {
     jclass fdClass = (*env)->FindClass(env, "java/io/FileDescriptor");
     if (fdClass != NULL) {
         jfieldID fdClassDescriptorFieldID = (*env)->GetFieldID(env, fdClass, "descriptor", "I");
-
         if (fdClassDescriptorFieldID != NULL && fd_ != NULL) {
-            if (data) {
-                fclose(data->fd);
-                free(data);
-                data = NULL;
-            }
             int fd = (*env)->GetIntField(env, fd_, fdClassDescriptorFieldID);
             int myfd = dup(fd);
-            data = gd_open_gif(myfd, off);
+            return (jlong) gd_open_gif_by_descpriptor(myfd, off);
         }
     }
+    return 0;
 }
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_closeGifFd(JNIEnv *env, jclass type) {
-    gd_close_gif(data);
-    data = NULL;
+Java_com_slava_noffmpeg_frameproviders_GifFramesProvider_closeGifFd(JNIEnv *env, jclass type, jlong gifptr) {
+    gd_close_gif((gd_GIF*) gifptr);
 }

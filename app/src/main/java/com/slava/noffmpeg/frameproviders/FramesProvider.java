@@ -11,7 +11,6 @@ import android.view.Surface;
 
 import androidx.annotation.Nullable;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -21,6 +20,7 @@ import static android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG;
 import static android.media.MediaCodec.INFO_TRY_AGAIN_LATER;
 import static com.slava.noffmpeg.mediaworkers.Encoder.TIMEOUT_US;
 import static com.slava.noffmpeg.mediaworkers.Encoder.getDefaultFormat;
+import static com.slava.noffmpeg.mediaworkers.VideoProcessor.bitmapRGBA8888toYUVA;
 
 /**
  * Предоставляет уже закодированные в h264 кадры, которые можно напрямую заливать в Muxer
@@ -30,6 +30,23 @@ public abstract class FramesProvider {
 
     final List<EncodedFrame> mFrames = new ArrayList<>();
     private int mIndex = 0;
+
+    public static FramesProvider fromFile(String path, int width, int height, float bpp, boolean encoded) {
+        int i = path.lastIndexOf('.');
+        if (i > 0) {
+            switch (path.substring(i + 1)) {
+                case "png":
+                case "jpg":
+                case "jpeg":
+                    return new ImageFramesProvider(path, width, height, 1.0f, encoded);
+                case "gif":
+                    return new GifFramesProvider(path, width, height, 1.0f, encoded);
+                case "mp4":
+                    return new VideoFramesProvider(path, width, height, 1.0f, encoded);
+            }
+        }
+        return null;
+    }
 
     /**
      * Для случая, когда предоставляется только лишь 1 кадр, нужно предоставить отдельно
@@ -52,56 +69,66 @@ public abstract class FramesProvider {
         return mFrames.isEmpty() ? null : mFrames.get(mIndex == mFrames.size() - 1 ? (mIndex = 0) : mIndex++);
     }
 
-    void getEncodedFrames(ImageCallback in, int width, int height, float bitsPerPixel) {
-        MediaFormat format = getDefaultFormat(width, height, 30, bitsPerPixel);
+    EncodedFrame convertFrame(Bitmap bmp, int width, int height) {
+        if (width % 2 == 1) width++;
+        if (height % 2 == 1) height++;
+        Bitmap scaled = Bitmap.createScaledBitmap(bmp, width, height, true);
+        ByteBuffer bb = ByteBuffer.allocateDirect(width * height * 7 / 4);
+        bitmapRGBA8888toYUVA(scaled, bb, width, height, false, false);
+        return new EncodedFrame(bb, 0);
+    }
+
+    class BitmapEncoder {
+
         MediaCodec encoder;
-        try {
-            encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return;
-        }
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        Surface surface = encoder.createInputSurface();
-        encoder.start();
-        Rect area = new Rect(0, 0, width, height);
+        Surface surface;
+        Rect area;
         Paint paint = new Paint();
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        Bitmap bmp;
-        while((bmp = in.next()) != null) {
+
+        BitmapEncoder(int width, int height, float bitsPerPixel) {
+            MediaFormat format = getDefaultFormat(width, height, 30, bitsPerPixel);
+            try {
+                encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+            } catch (IOException e) {
+                e.printStackTrace();
+                return;
+            }
+            encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            surface = encoder.createInputSurface();
+            area = new Rect(0, 0, width, height);
+            encoder.start();
+        }
+
+        EncodedFrame encode(Bitmap bmp) {
             Canvas canvas = surface.lockCanvas(area);
             canvas.drawBitmap(bmp, null, area, paint);
             surface.unlockCanvasAndPost(canvas);
-
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
             int outIndex;
-
             do {
                 outIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
-                if(outIndex >= 0) {
+                if (outIndex >= 0) {
                     ByteBuffer buffer = encoder.getOutputBuffers()[outIndex];
-                    Log.d("Encoder", "outIndex: " + outIndex + " flags: " + info.flags + " size:" + info.size);
+                    //Log.d("Encoder", "outIndex: " + outIndex + " flags: " + info.flags + " size:" + info.size);
                     buffer.position(info.offset);
                     buffer.limit(info.offset + info.size);
-                    byte[] ba = new byte[buffer.remaining()];
-                    buffer.get(ba);
+                    byte[] bytes = new byte[info.size];
+                    buffer.get(bytes);
                     encoder.releaseOutputBuffer(outIndex, false);
-                    Log.d("Encoder", "write " + info.size + " bytes, flags: " + info.flags);
-                    try {
-                        baos.write(ba);
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                    //Log.d("Encoder", "write " + info.size + " bytes, flags: " + info.flags);
+                    if (info.size > 0 && (info.flags & BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                        //Log.d("Encoder", "add some");
+                        return new EncodedFrame(ByteBuffer.wrap(bytes), info.flags);
                     }
                 }
-                Log.d("Encoder", "outIndex " + outIndex);
-            } while (outIndex != INFO_TRY_AGAIN_LATER || (info.flags & BUFFER_FLAG_CODEC_CONFIG) != 0);
-            byte[] bytes = baos.toByteArray();
-            mFrames.add(new EncodedFrame(bytes, info.flags));
-            Log.d("Encoder", "image buffer: " + bytes.length + "\n---");
+            } while (outIndex < 0 || (info.flags & BUFFER_FLAG_CODEC_CONFIG) != 0);
+            //Log.d("Encoder", "add null");
+            return null;
         }
-    }
 
-    interface ImageCallback {
-        Bitmap next();
+        void release() {
+            encoder.stop();
+            encoder.release();
+        }
     }
 }

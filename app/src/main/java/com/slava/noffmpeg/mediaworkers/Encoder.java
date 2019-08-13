@@ -23,7 +23,7 @@ public class Encoder {
     public static final int TIMEOUT_US = 10000;
     private int mVideoTrackIndex = -1;
     private MediaMuxer mMuxer = null;
-    private int mFramesEncoded = 0;
+    private long mFramesEncoded = 0;
     private int mFrameRate = 30;
     private FramesProvider mPauseFrame = null;
     private boolean mRequestResume = false;
@@ -71,12 +71,13 @@ public class Encoder {
     }
 
     public void writeEncodedData(EncodedFrame frame) {
+        mFramesEncoded++;
+        if(frame == null) return;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        info.presentationTimeUs = (mFramesEncoded++) * 1000000 / mFrameRate;
+        info.presentationTimeUs = (mFramesEncoded) * 1000000 / mFrameRate;
         info.offset = 0;
-        info.size = frame.data.length;
-        info.flags = frame.flags;
-        mMuxer.writeSampleData(mVideoTrackIndex, ByteBuffer.wrap(frame.data), info);
+        info.size = frame.data.capacity();
+        mMuxer.writeSampleData(mVideoTrackIndex, frame.data, info);
     }
 
     public boolean encodeFrame() {
@@ -96,10 +97,10 @@ public class Encoder {
         int outIndex = mEncoder.dequeueOutputBuffer(mInfo, TIMEOUT_US);
         switch (outIndex) {
             case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
-                Log.i("Encoder", "INFO_OUTPUT_BUFFERS_CHANGED");
+                //Log.i("Encoder", "INFO_OUTPUT_BUFFERS_CHANGED");
                 break;
             case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-                Log.i("Encoder", "INFO_OUTPUT_FORMAT_CHANGED");
+                //Log.i("Encoder", "INFO_OUTPUT_FORMAT_CHANGED");
                 if (mVideoTrackIndex < 0) {
                     MediaFormat newFormat = mEncoder.getOutputFormat();
                     mVideoTrackIndex = mMuxer.addTrack(newFormat);
@@ -107,7 +108,7 @@ public class Encoder {
                 }
                 break;
             case INFO_TRY_AGAIN_LATER:
-                Log.i("Encoder", "INFO_TRY_AGAIN_LATER");
+                //Log.i("Encoder", "INFO_TRY_AGAIN_LATER");
                 return (mInfo.flags & BUFFER_FLAG_CODEC_CONFIG) != 0;
             default:
                 // Если нужно выйти из паузы, начинаем кодировать входящие фреймы.
@@ -129,7 +130,7 @@ public class Encoder {
                         buffer.position(mInfo.offset);
                         buffer.limit(mInfo.offset + mInfo.size);
                         mMuxer.writeSampleData(mVideoTrackIndex, buffer, mInfo);
-                        Log.v("Encoder", "write bytes:" + mInfo.size);
+                        //Log.v("Encoder", "write bytes:" + mInfo.size);
                     }
                 }
                 mEncoder.releaseOutputBuffer(outIndex, false);

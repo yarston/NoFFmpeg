@@ -1,7 +1,10 @@
 package com.slava.noffmpeg.frameproviders;
 
 import android.graphics.Bitmap;
-import android.media.Image;
+import android.media.MediaCodec;
+import android.util.Log;
+
+import androidx.annotation.Nullable;
 
 import com.slava.noffmpeg.mediaworkers.Decoder;
 
@@ -9,8 +12,13 @@ import static com.slava.noffmpeg.mediaworkers.VideoProcessor.cvtYUV_420_888_to_R
 
 public class VideoFramesProvider extends FramesProvider {
 
-    private Bitmap mSwapBitmap;
     private Bitmap mBufferBitmap;
+    private boolean isFullyReadden = false;
+    private final int mHeight;
+    private final int mWidth;
+    private final boolean mEncoded;
+    private Decoder mDecoder;
+    private BitmapEncoder mEncoder = null;
 
     /**
      * Предпочтительно запускать конструктор в другом потоке
@@ -20,22 +28,49 @@ public class VideoFramesProvider extends FramesProvider {
      * @param bpp Бит на пиксель - задаёт качество
      */
 
-    public VideoFramesProvider(String path, int width, int height, float bpp) {
-        Decoder decoder = new Decoder(path);
-        decoder.prepare(null, () -> {
-            Image picture = decoder.getOutputImage();
-
-            if(mBufferBitmap == null) mBufferBitmap = Bitmap.createBitmap(picture.getWidth(), picture.getHeight(), Bitmap.Config.ARGB_8888);
-            Image.Plane[] planes = picture.getPlanes();
-            cvtYUV_420_888_to_RGBA(mBufferBitmap, planes[0].getBuffer(), planes[1].getBuffer(), planes[2].getBuffer());
-            mSwapBitmap = mBufferBitmap;
-            getEncodedFrames(() -> {
-                Bitmap ret = mSwapBitmap;
-                mSwapBitmap = null;
-                return ret;
-            }, width, height, bpp);
+    public VideoFramesProvider(String path, int width, int height, float bpp, boolean encoded) {
+        mWidth = width;
+        mHeight = height;
+        mEncoded = encoded;
+        mDecoder = new Decoder(path);
+        mDecoder.prepare(null, () -> {
+            if(mBufferBitmap == null) mBufferBitmap = Bitmap.createBitmap(mDecoder.getSize().width, mDecoder.getSize().height, Bitmap.Config.ARGB_8888);
+            cvtYUV_420_888_to_RGBA(mBufferBitmap, mDecoder.mOutputBuffer);
         });
-        while (decoder.haveFrame()) decoder.decodeFrame();
-        decoder.release();
+        if(encoded) mEncoder = new BitmapEncoder(width, height, bpp);
+    }
+
+
+    @Nullable
+    @Override
+    public EncodedFrame first() {
+        return this.next();
+    }
+
+    /**
+     * Ленивое получение видеокадров с кэшированием.
+     * @return
+     */
+
+    @Nullable
+    @Override
+    public EncodedFrame next() {
+        if(isFullyReadden) return super.next();
+        mDecoder.decodeFrame();
+        if(mBufferBitmap == null) return null;
+        EncodedFrame frame = mEncoded ? mEncoder.encode(mBufferBitmap) : convertFrame(mBufferBitmap, mWidth, mHeight);
+        if(frame!= null) mFrames.add(frame);
+        if((mDecoder.mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) isFullyReadden = true;
+        if(isFullyReadden) {
+            mBufferBitmap = null;
+            finalize();
+        }
+        return frame;
+    }
+
+    @Override
+    protected void finalize() {
+        if(mDecoder != null) mDecoder.release();
+        if(mEncoder != null) mEncoder.release();
     }
 }

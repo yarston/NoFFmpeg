@@ -11,6 +11,7 @@
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 
 #define CLAMP(x) if (x > 255) {x = 255;} else if (x < 0) { x = 0;}
+#define CLAMP18(x) if (x > 0x3FC0000) {x = 0x3FC0000;} else if (x < 0) { x = 0;}
 
 //#define ONLY_FILL_COLOR
 
@@ -18,9 +19,7 @@ JNIEXPORT void JNICALL
 Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(JNIEnv *env,
                                                                                jobject obj,
                                                                                jobject bitmap,
-                                                                               jobject buff_y,
-                                                                               jobject buff_u,
-                                                                               jobject buff_v) {
+                                                                               jobject buff_y) {
 
     AndroidBitmapInfo info;
     uint32_t *pixels;
@@ -42,11 +41,11 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_cvtYUV_1420_1888_1to_1RGBA(J
 #ifdef ONLY_FILL_COLOR
     for (uint32_t *p = pixels, *e = p + info.width * info.height; p < e; p++) *p = 0xFF00FF00;
 #else
-    uint8_t *y = (*env)->GetDirectBufferAddress(env, buff_y);
-    uint8_t *u = (*env)->GetDirectBufferAddress(env, buff_u);
-    uint8_t *v = (*env)->GetDirectBufferAddress(env, buff_v);
-
     int width = info.width, height = info.height, width1 = width - 1, height1 = height - 1;
+
+    uint8_t *y = (*env)->GetDirectBufferAddress(env, buff_y);
+    uint8_t *u = y + width * height;
+    uint8_t *v = u + width * height / 4;
 
     #pragma omp parallel for
     for (uint32_t i = 0; i < height1; i += 2) {
@@ -191,31 +190,33 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawRGBoverYUV(JNIEnv *env, 
 }
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV(JNIEnv *env, jobject obj, jobject src , jobject dst, jint px, jint py, jint pw, jint ph, jint w, jint h) {
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV(JNIEnv *env, jobject obj, jobject src , jobject dst, jint px, jint py, jint imgw, jint imgh, jint w, jint h) {
 
     uint8_t *src_y = (*env)->GetDirectBufferAddress(env, src);
-    uint8_t *src_u = src_y + pw * ph;
-    uint8_t *src_v = src_u + pw * ph / 4;
-    uint8_t *src_a = src_v + pw * ph / 4;
+
+    int imgw_half = imgw / 2, imgh_half = imgh / 2;
+    uint8_t *src_u = src_y + imgw * imgh;
+    uint8_t *src_v = src_u + imgw_half * imgh_half;
+    uint8_t *src_a = src_v + imgw_half * imgh_half;
 
     uint8_t *dst_y = (*env)->GetDirectBufferAddress(env, dst);
     uint8_t *dst_u = dst_y + w * h;
     uint8_t *dst_v = dst_u + w * h / 4;
 
-    for(int i = 0; i < ph / 2; i++) {
+    for(int i = 0; i < imgh_half; i++) {
         uint8_t *dst_y_line0 = dst_y + px + (i * 2 + py) * w, *dst_y_line1 = dst_y_line0 + w;
-        uint8_t *src_y_line0 = src_y + i * 2 * pw, *src_y_line1 = src_y_line0 + pw;
+        uint8_t *src_y_line0 = src_y + i * 2 * imgw, *src_y_line1 = src_y_line0 + imgw;
 
-        int baseQuartPositionSrc1 = i * pw / 2;
-        int baseQuartPositionDst1 = (px / 2) + (i + py / 2) * w / 2;
+        int quartPositionSrc = i * imgw_half;
+        int quartPositionDst = (px / 2) + (i + py / 2) * w / 2;
 
-        uint8_t *src_u_line = src_u + baseQuartPositionSrc1;
-        uint8_t *dst_u_line = dst_u + baseQuartPositionDst1;
-        uint8_t *src_v_line = src_v + baseQuartPositionSrc1;
-        uint8_t *dst_v_line = dst_v + baseQuartPositionDst1;
-        uint8_t *src_a_line = src_a + baseQuartPositionSrc1;
+        uint8_t *src_u_line = src_u + quartPositionSrc;
+        uint8_t *dst_u_line = dst_u + quartPositionDst;
+        uint8_t *src_v_line = src_v + quartPositionSrc;
+        uint8_t *dst_v_line = dst_v + quartPositionDst;
+        uint8_t *src_a_line = src_a + quartPositionSrc;
 
-        for(int j = 0; j < pw / 2; j++) {
+        for(int j = 0; j < imgw_half; j++) {
             uint32_t a = *src_a_line, ra = 255 - a;
             *dst_u_line = (uint8_t) ((((uint32_t) *src_u_line) * a + ((uint32_t) *dst_u_line) * ra) >> 8);
             *dst_v_line = (uint8_t) ((((uint32_t) *src_v_line) * a + ((uint32_t) *dst_v_line) * ra) >> 8);
@@ -275,13 +276,13 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_bitmapRGBA8888toYUVA(JNIEnv 
     for(int i = 0; i < h - 1; i += 2) {
 
         int position = i * w;
-        int baseQuartPosition = (i / 2) * (w / 2);
+        int quartPosition = (i / 2) * (w / 2);
 
         uint32_t *src_line0   = pixels + position, *src_line1 = src_line0 + w;
         uint8_t  *dst_y_line0 = buff_y + position, *dst_y_line1 = dst_y_line0 + w;
-        uint8_t  *dst_v_line  = buff_v + baseQuartPosition;
-        uint8_t  *dst_u_line  = buff_u + baseQuartPosition;
-        uint8_t  *dst_a_line  = buff_a + baseQuartPosition;
+        uint8_t  *dst_v_line  = buff_v + quartPosition;
+        uint8_t  *dst_u_line  = buff_u + quartPosition;
+        uint8_t  *dst_a_line  = buff_a + quartPosition;
 
         for(int j = 0; j < w - 1; j += 2) {
 
@@ -295,19 +296,19 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_bitmapRGBA8888toYUVA(JNIEnv 
             int32_t r2 = GETR(srcpix2), g2 = GETG(srcpix2), b2 = GETB(srcpix2);
             int32_t r3 = GETR(srcpix3), g3 = GETG(srcpix3), b3 = GETB(srcpix3);
 
-            int32_t r_mid = (r0 + r1 + r2 + r3) / 4;
-            int32_t g_mid = (g0 + g1 + g2 + g3) / 4;
-            int32_t b_mid = (b0 + b1 + b2 + b3) / 4;
+            int32_t r_sum = (r0 + r1 + r2 + r3);
+            int32_t g_sum = (g0 + g1 + g2 + g3);
+            int32_t b_sum = (b0 + b1 + b2 + b3);
 
-            int32_t u_mid = 128 + (-9634 * r_mid - 18940 * g_mid + 28574 * b_mid) / 65536;
-            int32_t v_mid = 128 + (40305 * r_mid - 33751 * g_mid -  6554 * b_mid) / 65536;
-            //u_mid гарантировано вписывается в 0 < x < 255, поэтому его ограничивать не нужно
-            CLAMP(v_mid);
+            int32_t u_mid = (0x2000000 -  9634 * r_sum - 18940 * g_sum + 28574 * b_sum);
+            int32_t v_mid = (0x2000000 + 40305 * r_sum - 33751 * g_sum -  6554 * b_sum) ;
+            //(u_mid >> 18) гарантировано вписывается в 0 < x < 255, поэтому его ограничивать не нужно
+            CLAMP18(v_mid);
 
-            *dst_u_line++ = (uint8_t) u_mid;
-            *dst_v_line++ = (uint8_t) v_mid;
+            *dst_u_line++ = (uint8_t) (u_mid >> 18);
+            *dst_v_line++ = (uint8_t) (v_mid >> 18);
 
-            *dst_a_line++ = (uint8_t) ((GETA(srcpix0) + GETA(srcpix1) + GETA(srcpix2) + GETA(srcpix3)) / 4);
+            *dst_a_line++  = (uint8_t) ((GETA(srcpix0) + GETA(srcpix1) + GETA(srcpix2) + GETA(srcpix3)) >> 2);
             *dst_y_line0++ = (uint8_t) ((r0 * 19595 + g0 * 38470 + b0 * 7471) >> 16);
             *dst_y_line0++ = (uint8_t) ((r1 * 19595 + g1 * 38470 + b1 * 7471) >> 16);
             *dst_y_line1++ = (uint8_t) ((r2 * 19595 + g2 * 38470 + b2 * 7471) >> 16);

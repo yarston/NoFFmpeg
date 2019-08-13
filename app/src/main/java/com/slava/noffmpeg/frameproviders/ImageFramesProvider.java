@@ -8,29 +8,35 @@ import androidx.annotation.Nullable;
 
 public class ImageFramesProvider extends FramesProvider {
 
-    // Нужно 2 фрейма для статичной картинки: ключевой и промежуточный,
-    // иначе пауза будет очень сильно раздувать размер видео
-    private int nFrames = 2;
-
-    /**
-     * @return всегда промежуточный файл
-     */
+    private static final int KEYFRAME_INTERVAL = 60;
+    private int nFrames = 0;
+    private boolean mEncoded;
 
     @Nullable
     @Override
     public EncodedFrame next() {
-        return mFrames.size() < 2 ? null : mFrames.get(1);
+        if(!mEncoded) return mFrames.get(0);
+        if(nFrames == KEYFRAME_INTERVAL) nFrames = 0;
+        return mFrames.get(nFrames++);
     }
 
-    public ImageFramesProvider(String path, int width, int height, float bpp) {
-        putBitmaps(BitmapFactory.decodeFile(path), width, height, bpp);
+    public ImageFramesProvider(String path, int width, int height, float bpp, boolean encoded) {
+        putBitmaps(BitmapFactory.decodeFile(path), width, height, bpp, encoded);
     }
 
-    public ImageFramesProvider(Resources res, int resId, int width, int height, float bpp) {
-        putBitmaps(BitmapFactory.decodeResource(res, resId), width, height, bpp);
+    public ImageFramesProvider(Resources res, int resId, int width, int height, float bpp, boolean encoded) {
+        putBitmaps(BitmapFactory.decodeResource(res, resId), width, height, bpp, encoded);
     }
 
-    private void putBitmaps(Bitmap bmp, int width, int height, float bpp) {
-        getEncodedFrames(() -> nFrames-- == 0 ? null : bmp, width, height, bpp);
+    private void putBitmaps(Bitmap bmp, int width, int height, float bpp, boolean encoded) {
+        mEncoded = encoded;
+        if(encoded) {
+            BitmapEncoder encoder = new BitmapEncoder(width, height, bpp);
+            for(int i = 0; i < KEYFRAME_INTERVAL; i++) mFrames.add(encoder.encode(bmp));
+            encoder.release();
+        } else {
+            EncodedFrame frame = convertFrame(bmp, width, height);
+            mFrames.add(frame);
+        }
     }
 }

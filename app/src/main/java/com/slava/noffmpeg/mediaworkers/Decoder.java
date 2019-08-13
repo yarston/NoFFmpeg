@@ -118,15 +118,13 @@ public class Decoder {
             default:
                 if (mInfo.size > 0) {
                     mOutputBuffer = mDecoder.getOutputBuffer(outIndex);
-                    mCallback.run();
+                    mOutputBuffer.position(mInfo.offset);
+                    mOutputBuffer.limit(mInfo.offset + mInfo.size);
+                    if(mCallback != null) mCallback.run();
                 }
                 if (outIndex >= 0) mDecoder.releaseOutputBuffer(outIndex, false);
                 break;
         }
-    }
-
-    public MediaCodec.BufferInfo getBufferInfo() {
-        return mInfo;
     }
 
     public void release() {
@@ -134,13 +132,5 @@ public class Decoder {
         mDecoder.stop();
         mDecoder.release();
         mDecoder = null;
-    }
-
-    public Image getOutputImage() {
-        return mOutputImage;
-    }
-
-    public void setBufferCallback(BufferCallback mBufferCallback) {
-        this.mBufferCallback = mBufferCallback;
     }
 }

@@ -21,7 +21,7 @@ class VideoPictureFileChooser {
 
     void chooseVideo(Activity activity) {
         Intent intent = new Intent(activity, VideoPickActivity.class);
-        intent.putExtra(Constant.MAX_NUMBER, 1);
+        intent.putExtra(Constant.MAX_NUMBER, 2);
         activity.startActivityForResult(intent, Constant.REQUEST_CODE_PICK_VIDEO);
     }
 
@@ -56,8 +56,10 @@ class VideoPictureFileChooser {
                 if (listVideos != null && !listVideos.isEmpty())
                     if (mIsPauseSelect)
                         mPauseFile = listVideos.get(0).getPath();
-                    else
+                    else {
                         mVideoFilePath = listVideos.get(0).getPath();
+                        if(listVideos.size() == 2) mImageFilePathes.add(listVideos.get(1).getPath());
+                    }
                 return true;
         }
         return false;
