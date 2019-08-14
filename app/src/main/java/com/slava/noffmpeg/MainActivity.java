@@ -1,13 +1,15 @@
 package com.slava.noffmpeg;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.DisplayMetrics;
@@ -23,6 +25,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import com.slava.noffmpeg.frameproviders.FramesProvider;
 import com.slava.noffmpeg.frameproviders.ImageFramesProvider;
@@ -37,6 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import lib.folderpicker.FolderPicker;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -53,6 +57,8 @@ public class MainActivity extends AppCompatActivity {
 
     private static final float BPP_STEP = 0.05f;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
+    private static final int FOLDERPICKER_CODE = 2;
+    private static final int PERMISSION_CODE = 3;
     private final VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
     private Handler mDrainHandler = null;
     private Encoder mScreenEncoder;
@@ -60,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
     private Size mVideoSize = new Size(1280, 720);
     private HandlerThread mRenderThread = new HandlerThread("render_thread");
     private FramesProvider mPauseFramesProvider = null;
+    private String mOutFilePath = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
-        mProcess.setOnClickListener(v -> Executors.newSingleThreadExecutor().submit(this::processFile2File));
+        mProcess.setOnClickListener(v -> prepareFile2File());
         mTextBpp.setText(getString(R.string.bpp, mSeekBar.getProgress() * BPP_STEP));
         mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -121,6 +128,14 @@ public class MainActivity extends AppCompatActivity {
         mRenderThread.start();
         mDrainHandler = new Handler(mRenderThread.getLooper());
         mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, 1.0f, true);
+        getPermission();
+    }
+
+    private void prepareFile2File() {
+        if (mOutFilePath == null) {
+            Intent intent = new Intent(this, FolderPicker.class);
+            startActivityForResult(intent, FOLDERPICKER_CODE);
+        } else Executors.newSingleThreadExecutor().submit(this::processFile2File);
     }
 
     private void processFile2File() {
@@ -130,7 +145,8 @@ public class MainActivity extends AppCompatActivity {
         Size size = decoder.getSize();
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size);
         Log.v("Decoder", "mVideoSize = " + size.width + " x " + size.height);
-        File f = new File(Environment.getExternalStorageDirectory(), "out.mp4");
+        File f = new File(mOutFilePath);
+
         mScreenEncoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP, false);
 
         AtomicInteger nFrames = new AtomicInteger();
@@ -196,6 +212,19 @@ public class MainActivity extends AppCompatActivity {
                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                 mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);
                 mDrainHandler.postDelayed(this::drain, 10);
+            } else if (resultCode == Activity.RESULT_OK) {
+                mOutFilePath = intent.getExtras().getString("data") + "/out2.mp4";
+                prepareFile2File();
             }
+    }
+
+    private void getPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            int canRead = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE);
+            int canWrite = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            if (canRead != PackageManager.PERMISSION_GRANTED || canWrite != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_CODE);
+            }
+        }
     }
 }
