@@ -58,6 +58,7 @@ public class Encoder {
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         format.setInteger(MediaFormat.KEY_BIT_RATE, (int) (bitsPerPixel * frameRate * width * height));
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height * 3 / 2);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
         return format;
     }

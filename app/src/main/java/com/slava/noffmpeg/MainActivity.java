@@ -160,10 +160,14 @@ public class MainActivity extends AppCompatActivity {
         });
 
         decoder.prepare(null, () -> {
-            processor.process(decoder.mOutputBuffer);
-            //Log.v("Decoder", "frame " + nFrames);
-            mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
-            mScreenEncoder.encodeFrame();
+            try {
+                processor.process(decoder.mOutputBuffer);
+                //Log.v("Decoder", "frame " + nFrames);
+                mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
+                mScreenEncoder.encodeFrame();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
             mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
         });
 
