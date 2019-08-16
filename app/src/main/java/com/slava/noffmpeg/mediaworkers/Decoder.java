@@ -66,8 +66,7 @@ public class Decoder {
         return mFormat;
     }
 
-    public boolean prepare(Surface surface, Runnable callback) {
-        mCallback = callback;
+    public boolean prepare(Surface surface) {
         if (mFormat == null) return false;
         try {
             mDecoder = MediaCodec.createDecoderByType(mFormat.getString(MediaFormat.KEY_MIME));
@@ -75,6 +74,7 @@ public class Decoder {
             e.printStackTrace();
             return false;
         }
+        //mFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, 21);
         mDecoder.configure(mFormat, surface, null, 0);
         if (mDecoder == null) return false;
         mDecoder.start();
@@ -85,12 +85,20 @@ public class Decoder {
         return true;
     }
 
+    public void setCallback(Runnable callback) {
+        mCallback = callback;
+    }
+
     public int getMaxFrames() {
         return (int) (mDuration * mFPS / 1000000);
     }
 
     public boolean haveFrame() {
         return mIsReady;
+    }
+
+    public MediaCodec getCodec() {
+        return mDecoder;
     }
 
     public void decodeFrame() {

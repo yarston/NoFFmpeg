@@ -20,23 +20,22 @@ public class ImageFramesProvider extends FramesProvider {
         return mFrames.get(nFrames++);
     }
 
-    public ImageFramesProvider(String path, int width, int height, float bpp, boolean encoded) {
-        putBitmaps(BitmapFactory.decodeFile(path), width, height, bpp, encoded);
+    ImageFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded) {
+        putBitmaps(BitmapFactory.decodeFile(path), width, height, colorFormat, bpp, encoded);
     }
 
-    public ImageFramesProvider(Resources res, int resId, int width, int height, float bpp, boolean encoded) {
-        putBitmaps(BitmapFactory.decodeResource(res, resId), width, height, bpp, encoded);
+    public ImageFramesProvider(Resources res, int resId, int width, int height, int colorFormat, float bpp, boolean encoded) {
+        putBitmaps(BitmapFactory.decodeResource(res, resId), width, height, colorFormat, bpp, encoded);
     }
 
-    private void putBitmaps(Bitmap bmp, int width, int height, float bpp, boolean encoded) {
+    private void putBitmaps(Bitmap bmp, int width, int height, int colorFormat, float bpp, boolean encoded) {
         mEncoded = encoded;
         if(encoded) {
-            BitmapEncoder encoder = new BitmapEncoder(width, height, bpp);
+            BitmapEncoder encoder = new BitmapEncoder(width, height, colorFormat, bpp);
             for(int i = 0; i < KEYFRAME_INTERVAL; i++) mFrames.add(encoder.encode(bmp));
             encoder.release();
         } else {
-            EncodedFrame frame = convertFrame(bmp, width, height);
-            mFrames.add(frame);
+            mFrames.add(convertFrame(bmp, width, height, colorFormat));
         }
     }
 }

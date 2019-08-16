@@ -2,11 +2,14 @@ package com.slava.noffmpeg.mediaworkers;
 
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Surface;
+
+import androidx.annotation.NonNull;
 
 import com.slava.noffmpeg.frameproviders.EncodedFrame;
 import com.slava.noffmpeg.frameproviders.FramesProvider;
@@ -24,7 +27,7 @@ public class Encoder {
     private int mVideoTrackIndex = -1;
     private MediaMuxer mMuxer = null;
     private long mFramesEncoded = 0;
-    private int mFrameRate = 30;
+    private int mFrameRate;
     private FramesProvider mPauseFrame = null;
     private boolean mRequestResume = false;
     private boolean mRequestKeyFrame = false;
@@ -32,30 +35,81 @@ public class Encoder {
     private MediaCodec mEncoder;
     private Surface mSurface;
     private final MediaCodec.BufferInfo mInfo = new MediaCodec.BufferInfo();
+    private static final boolean DEBUG = true;
+
 
     //Нужно запилить паузу. Варианты:
     //1. Рисовать на том же холсте, который используется в MediaProjection, нельзя через Canvas, крашится. Но может быть, можно как-то иначе, хз.
     //2. Писать экрвн в промежуточный канвас, рисовать его на холсте и отправлять в канвас кодека, но это оверхэд
     //3. Использовать 2 кодека со своими холстами и переключать их в микшере - так и сделаю.
 
-    public Encoder(String path, Size size, MediaFormat inputFormat, float bitsPerPixel, boolean withSurface) {
-        if (inputFormat != null && inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE))
-            mFrameRate = inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE);
-        MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
+    public Encoder(String path, Size size, int frameRate, @NonNull MediaCodecInfo codecInfo, int colorFormat, float bitsPerPixel, boolean withSurface) {
+        mFrameRate = frameRate;
         try {
+            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, colorFormat, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-            mEncoder = MediaCodec.createEncoderByType("video/avc");
+            //mEncoder = MediaCodec.createEncoderByType("video/avc");
+            mEncoder = MediaCodec.createByCodecName(codecInfo.getName());
             mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
             if(withSurface) mSurface = mEncoder.createInputSurface();
             mEncoder.start();
+            if(DEBUG) Log.d("Encoder", "encoder strarted");
         } catch (IOException e) {
-            e.printStackTrace();
+            if(DEBUG) e.printStackTrace();
         }
     }
 
-    public static MediaFormat getDefaultFormat(int width, int height, int frameRate, float bitsPerPixel) {
+    /**
+     * Returns the first codec capable of encoding the specified MIME type, or null if no
+     * match was found.
+     */
+    public static MediaCodecInfo selectCodec() {
+        int numCodecs = MediaCodecList.getCodecCount();
+        for (int i = 0; i < numCodecs; i++) {
+            MediaCodecInfo codecInfo = MediaCodecList.getCodecInfoAt(i);
+            if (!codecInfo.isEncoder()) continue;
+
+            for (String type : codecInfo.getSupportedTypes())
+                if (type.equalsIgnoreCase(MediaFormat.MIMETYPE_VIDEO_AVC))
+                    return codecInfo;
+        }
+        return null;
+    }
+
+    /**
+     * Returns a color format that is supported by the codec and by this test code.  If no
+     * match is found, this throws a test failure -- the set of formats known to the test
+     * should be expanded for new platforms.
+     */
+    public static int selectColorFormat(MediaCodecInfo codecInfo) {
+        for(int colorFormat : codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).colorFormats)
+            if (isRecognizedFormat(colorFormat)) return colorFormat;
+        if(DEBUG) Log.e("Encoder", "couldn't find a good color format for " + codecInfo.getName() + " / " + MediaFormat.MIMETYPE_VIDEO_AVC);
+        return 0;   // not reached
+        //return 21;
+    }
+
+    /**
+     * Returns true if this is a color format that this test code understands (i.e. we know how
+     * to read and generate frames in this format).
+     */
+    private static boolean isRecognizedFormat(int colorFormat) {
+        switch (colorFormat) {
+            // these are the formats we know how to handle for this test
+            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar:
+            //case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedPlanar:
+            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar:
+            //case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedSemiPlanar:
+            //case MediaCodecInfo.CodecCapabilities.COLOR_TI_FormatYUV420PackedSemiPlanar:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public static MediaFormat getDefaultFormat(int width, int height, int frameRate, int colorFormat, float bitsPerPixel) {
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
         format.setInteger(MediaFormat.KEY_BIT_RATE, (int) (bitsPerPixel * frameRate * width * height));
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height * 3 / 2);

@@ -5,27 +5,26 @@ import android.graphics.Bitmap;
 import androidx.annotation.Nullable;
 
 import java.io.FileDescriptor;
-import java.nio.ByteBuffer;
-
-import static com.slava.noffmpeg.mediaworkers.VideoProcessor.bitmapRGBA8888toYUVA;
 
 public class GifFramesProvider extends FramesProvider {
 
     private final int mHeight;
     private final int mWidth;
     private final boolean mEncoded;
+    private final int mColorFormat;
     private long mGifptr = 0;
     private Bitmap mBufferBitmap;
     private boolean isFullyReadden = false;
     private BitmapEncoder mEncoder = null;
 
-    public GifFramesProvider(String path, int width, int height, float bpp, boolean encoded) {
+    public GifFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded) {
         mWidth = width;
         mHeight = height;
         mEncoded = encoded;
+        mColorFormat = colorFormat;
         mGifptr = openGifbyPath(path);
         if(mGifptr == 0) return;
-        if(encoded) mEncoder = new BitmapEncoder(width, height, bpp);
+        if(encoded) mEncoder = new BitmapEncoder(width, height, colorFormat, bpp);
     }
 
     @Nullable
@@ -47,18 +46,8 @@ public class GifFramesProvider extends FramesProvider {
         if(mBufferBitmap == null) mBufferBitmap = Bitmap.createBitmap(getWidth(mGifptr), getHeight(mGifptr), Bitmap.Config.ARGB_8888);
         if(fillNextBitmap(mBufferBitmap, mGifptr) == 0) isFullyReadden = true;
 
-        EncodedFrame frame;
-        if(mEncoded) {
-            frame = mEncoder.encode(mBufferBitmap);
-        } else {
-            int width = mWidth, height = mHeight;
-            if (width % 2 == 1) width++;
-            if (height % 2 == 1) height++;
-            Bitmap scaled = Bitmap.createScaledBitmap(mBufferBitmap, width, height, true);
-            ByteBuffer bb = ByteBuffer.allocateDirect(width * height * 7 / 4);
-            bitmapRGBA8888toYUVA(scaled, bb, width, height, false, false);
-            frame = new EncodedFrame(bb, 0);
-        }
+        EncodedFrame frame = mEncoded ? mEncoder.encode(mBufferBitmap) : convertFrame(mBufferBitmap, mWidth, mHeight, mColorFormat);
+
         mFrames.add(frame);
         if(isFullyReadden) {
             mBufferBitmap = null;

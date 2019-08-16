@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.display.DisplayManager;
+import android.media.MediaCodecInfo;
+import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
@@ -41,6 +43,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import lib.folderpicker.FolderPicker;
+
+import static com.slava.noffmpeg.mediaworkers.Encoder.selectCodec;
+import static com.slava.noffmpeg.mediaworkers.Encoder.selectColorFormat;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -127,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
 
         mRenderThread.start();
         mDrainHandler = new Handler(mRenderThread.getLooper());
-        mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, 1.0f, true);
+        mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
         getPermission();
     }
 
@@ -142,14 +147,32 @@ public class MainActivity extends AppCompatActivity {
         long startTime = System.currentTimeMillis();
         if (mFileChooser.getVideoPath() == null) return;
         Decoder decoder = new Decoder(mFileChooser.getVideoPath());
+        decoder.prepare(null);
+
         Size size = decoder.getSize();
-        VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size);
         Log.v("Decoder", "mVideoSize = " + size.width + " x " + size.height);
         File f = new File(mOutFilePath);
+        MediaFormat inputFormat = decoder.getFormat();
+        int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : 30;
+        Log.v("Decoder", "inputFormat = " + inputFormat);
+        MediaFormat outputFormat = decoder.getCodec().getOutputFormat();
+        Log.v("Decoder", "outputFormat = " + outputFormat);
+        MediaCodecInfo codecInfo = selectCodec();
+        int colorFormat = outputFormat.containsKey(MediaFormat.KEY_COLOR_FORMAT) ? outputFormat.getInteger(MediaFormat.KEY_COLOR_FORMAT) : selectColorFormat(codecInfo);
+        Log.v("Decoder", "colorFromat = " + colorFormat);
 
-        mScreenEncoder = new Encoder(f.getPath(), size, decoder.getFormat(), mSeekBar.getProgress() * BPP_STEP, false);
+        mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, mSeekBar.getProgress() * BPP_STEP, false);
+        VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size, colorFormat);
 
         AtomicInteger nFrames = new AtomicInteger();
+        decoder.setCallback(() -> {
+             processor.process(decoder.mOutputBuffer);
+            if (nFrames.get() % 20 == 0) Log.v("Decoder", "frame " + nFrames);
+            mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
+            mScreenEncoder.encodeFrame();
+            mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
+        });
+
         runOnUiThread(() -> {
             mProgress.setMax(decoder.getMaxFrames());
             mProgress.setProgress(0);
@@ -157,18 +180,6 @@ public class MainActivity extends AppCompatActivity {
             mChooseVideo.setEnabled(false);
             mChooseImages.setEnabled(false);
             mProcess.setEnabled(false);
-        });
-
-        decoder.prepare(null, () -> {
-            try {
-                processor.process(decoder.mOutputBuffer);
-                //Log.v("Decoder", "frame " + nFrames);
-                mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
-                mScreenEncoder.encodeFrame();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
         });
 
          //for(int i = 0; i < 100; i++)decoder.decodeFrame();
@@ -202,7 +213,7 @@ public class MainActivity extends AppCompatActivity {
                 mStatus.setText(mFileChooser.getStatus());
                 if(mFileChooser.mIsPauseSelect) {
                     mFileChooser.mIsPauseSelect = false;
-                    mPauseFramesProvider = FramesProvider.fromFile(mFileChooser.getPausePath(), mVideoSize.width, mVideoSize.height, 1.0f, true);
+                    mPauseFramesProvider = FramesProvider.fromFile(mFileChooser.getPausePath(), mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
                     if (mPauseFramesProvider == null) Toast.makeText(this, R.string.file_not_suitable, Toast.LENGTH_SHORT).show();
                 }
             } else if (requestCode == REQUEST_MEDIA_PROJECTION) {
@@ -212,7 +223,8 @@ public class MainActivity extends AppCompatActivity {
                 Display defaultDisplay = dm.getDisplay(Display.DEFAULT_DISPLAY);
                 if (defaultDisplay == null) throw new RuntimeException("No display found.");
                 mScreenRecord.setText("Стоп");
-                mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, null, mSeekBar.getProgress() * BPP_STEP, true);
+                MediaCodecInfo codecInfo = selectCodec();
+                mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, 30, codecInfo, selectColorFormat(codecInfo), mSeekBar.getProgress() * BPP_STEP, true);
                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                 mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);
                 mDrainHandler.postDelayed(this::drain, 10);

@@ -5,8 +5,8 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
-import android.util.Log;
 import android.view.Surface;
 
 import androidx.annotation.Nullable;
@@ -17,10 +17,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG;
-import static android.media.MediaCodec.INFO_TRY_AGAIN_LATER;
 import static com.slava.noffmpeg.mediaworkers.Encoder.TIMEOUT_US;
 import static com.slava.noffmpeg.mediaworkers.Encoder.getDefaultFormat;
-import static com.slava.noffmpeg.mediaworkers.VideoProcessor.bitmapRGBA8888toYUVA;
+import static com.slava.noffmpeg.mediaworkers.VideoProcessor.bitmapRGBA8888toYUV420Planar;
+import static com.slava.noffmpeg.mediaworkers.VideoProcessor.bitmapRGBA8888toYUV420SemiPlanar;
 
 /**
  * Предоставляет уже закодированные в h264 кадры, которые можно напрямую заливать в Muxer
@@ -31,18 +31,18 @@ public abstract class FramesProvider {
     final List<EncodedFrame> mFrames = new ArrayList<>();
     private int mIndex = 0;
 
-    public static FramesProvider fromFile(String path, int width, int height, float bpp, boolean encoded) {
+    public static FramesProvider fromFile(String path, int width, int height, int colorFormat, float bpp, boolean encoded) {
         int i = path.lastIndexOf('.');
         if (i > 0) {
             switch (path.substring(i + 1)) {
                 case "png":
                 case "jpg":
                 case "jpeg":
-                    return new ImageFramesProvider(path, width, height, 1.0f, encoded);
+                    return new ImageFramesProvider(path, width, height, colorFormat, bpp, encoded);
                 case "gif":
-                    return new GifFramesProvider(path, width, height, 1.0f, encoded);
+                    return new GifFramesProvider(path, width, height, colorFormat, bpp, encoded);
                 case "mp4":
-                    return new VideoFramesProvider(path, width, height, 1.0f, encoded);
+                    return new VideoFramesProvider(path, width, height, colorFormat, bpp, encoded);
             }
         }
         return null;
@@ -69,12 +69,20 @@ public abstract class FramesProvider {
         return mFrames.isEmpty() ? null : mFrames.get(mIndex == mFrames.size() - 1 ? (mIndex = 0) : mIndex++);
     }
 
-    EncodedFrame convertFrame(Bitmap bmp, int width, int height) {
+    EncodedFrame convertFrame(Bitmap bmp, int width, int height, int colorFormat) {
         if (width % 2 == 1) width++;
         if (height % 2 == 1) height++;
         Bitmap scaled = Bitmap.createScaledBitmap(bmp, width, height, true);
         ByteBuffer bb = ByteBuffer.allocateDirect(width * height * 7 / 4);
-        bitmapRGBA8888toYUVA(scaled, bb, width, height, false, false);
+
+        switch (colorFormat) {
+            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar:
+                bitmapRGBA8888toYUV420Planar(scaled, bb, width, height, false, false);
+                break;
+            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar:
+                bitmapRGBA8888toYUV420SemiPlanar(scaled, bb, width, height, false, false);
+        }
+
         return new EncodedFrame(bb, 0);
     }
 
@@ -86,8 +94,8 @@ public abstract class FramesProvider {
         Paint paint = new Paint();
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
 
-        BitmapEncoder(int width, int height, float bitsPerPixel) {
-            MediaFormat format = getDefaultFormat(width, height, 30, bitsPerPixel);
+        BitmapEncoder(int width, int height, int colorFormat, float bitsPerPixel) {
+            MediaFormat format = getDefaultFormat(width, height, 30, colorFormat, bitsPerPixel);
             try {
                 encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             } catch (IOException e) {
