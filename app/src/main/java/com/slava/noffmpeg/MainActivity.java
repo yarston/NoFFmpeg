@@ -37,6 +37,7 @@ import com.slava.noffmpeg.mediaworkers.Size;
 import com.slava.noffmpeg.mediaworkers.VideoProcessor;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -46,6 +47,7 @@ import lib.folderpicker.FolderPicker;
 
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectCodec;
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectColorFormat;
+import static com.slava.noffmpeg.mediaworkers.YUVTest.getNV21;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -64,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_MEDIA_PROJECTION = 1;
     private static final int FOLDERPICKER_CODE = 2;
     private static final int PERMISSION_CODE = 3;
+    private static final boolean TEST_SEMIPLANAR = false;
     private final VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
     private Handler mDrainHandler = null;
     private Encoder mScreenEncoder;
@@ -71,7 +74,7 @@ public class MainActivity extends AppCompatActivity {
     private Size mVideoSize = new Size(1280, 720);
     private HandlerThread mRenderThread = new HandlerThread("render_thread");
     private FramesProvider mPauseFramesProvider = null;
-    private String mOutFilePath = null;
+    private String mOutFilePath = null;// "/storage/emulated/0";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -132,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
 
         mRenderThread.start();
         mDrainHandler = new Handler(mRenderThread.getLooper());
-        mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
+        //mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
         getPermission();
     }
 
@@ -159,19 +162,34 @@ public class MainActivity extends AppCompatActivity {
         Log.v("Decoder", "outputFormat = " + outputFormat);
         MediaCodecInfo codecInfo = selectCodec();
         int colorFormat = outputFormat.containsKey(MediaFormat.KEY_COLOR_FORMAT) ? outputFormat.getInteger(MediaFormat.KEY_COLOR_FORMAT) : selectColorFormat(codecInfo);
+        if(TEST_SEMIPLANAR) colorFormat = 21;
         Log.v("Decoder", "colorFromat = " + colorFormat);
 
         mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, mSeekBar.getProgress() * BPP_STEP, false);
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size, colorFormat);
 
         AtomicInteger nFrames = new AtomicInteger();
-        decoder.setCallback(() -> {
-             processor.process(decoder.mOutputBuffer);
-            if (nFrames.get() % 20 == 0) Log.v("Decoder", "frame " + nFrames);
-            mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
-            mScreenEncoder.encodeFrame();
-            mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
-        });
+        if(TEST_SEMIPLANAR) {
+            byte[] bytes = getNV21(getResources(), size.width, size.height);
+            ByteBuffer bb = ByteBuffer.allocateDirect(bytes.length);
+            bb.put(bytes);
+            decoder.setCallback(() -> {
+                bb.rewind();
+                processor.process(bb);
+                if (nFrames.get() % 20 == 0) Log.v("Decoder", "frame " + nFrames);
+                mScreenEncoder.writeBuffer(bb, decoder.mInfo);
+                mScreenEncoder.encodeFrame();
+                mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
+            });
+        } else {
+            decoder.setCallback(() -> {
+                processor.process(decoder.mOutputBuffer);
+                if (nFrames.get() % 20 == 0) Log.v("Decoder", "frame " + nFrames);
+                mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
+                mScreenEncoder.encodeFrame();
+                mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
+            });
+        }
 
         runOnUiThread(() -> {
             mProgress.setMax(decoder.getMaxFrames());
@@ -191,8 +209,10 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
+        int finalColorFormat = colorFormat;
         runOnUiThread(() -> {
-            mStatus.setText(String.format("completed in %.2f sec", (System.currentTimeMillis() - startTime) * 0.001f));
+            mStatus.setText(String.format("completed %d frames (%dx%d) in %.2f sec, colorformat=%d",
+                    nFrames.get(), size.width, size.height, (System.currentTimeMillis() - startTime) * 0.001f, finalColorFormat));
             mChooseVideo.setEnabled(true);
             mChooseImages.setEnabled(true);
             mProcess.setEnabled(true);

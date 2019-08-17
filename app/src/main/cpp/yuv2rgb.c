@@ -506,8 +506,10 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Semilanar(
         for(int j = 0; j < imgw_half; j++) {
             uint32_t a = *src_a_line, ra = 255 - a;
             *dst_uv_line = (uint8_t) ((((uint32_t) *src_uv_line) * a + ((uint32_t) *dst_uv_line) * ra) >> 8);
+            dst_uv_line++;
             src_uv_line++;
             *dst_uv_line = (uint8_t) ((((uint32_t) *src_uv_line) * a + ((uint32_t) *dst_uv_line) * ra) >> 8);
+            dst_uv_line++;
             src_uv_line++;
             src_a_line++;
 
