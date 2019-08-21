@@ -529,3 +529,121 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Semilanar(
     }
 
 }
+
+
+
+JNIEXPORT void JNICALL
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_copyPicture(JNIEnv *env, jobject obj, jint w, jint h,
+                                                                jobject srcBuffY, jint srcRowStrideY, jint srcPixelStrideY,
+                                                                jobject srcBuffU, jint srcRowStrideU, jint srcPixelStrideU,
+                                                                jobject srcBuffV, jint srcRowStrideV, jint srcPixelStrideV,
+                                                                jobject dstBuffY, jint dstRowStrideY, jint dstPixelStrideY,
+                                                                jobject dstBuffU, jint dstRowStrideU, jint dstPixelStrideU,
+                                                                jobject dstBuffV, jint dstRowStrideV, jint dstPixelStrideV) {
+
+    uint8_t *dst_y = (*env)->GetDirectBufferAddress(env, dstBuffY);
+    uint8_t *dst_u = (*env)->GetDirectBufferAddress(env, dstBuffU);
+    uint8_t *dst_v = (*env)->GetDirectBufferAddress(env, dstBuffV);
+
+    uint8_t *src_y = (*env)->GetDirectBufferAddress(env, srcBuffY);
+    uint8_t *src_u = (*env)->GetDirectBufferAddress(env, srcBuffU);
+    uint8_t *src_v = (*env)->GetDirectBufferAddress(env, srcBuffV);
+
+   #pragma omp parallel for
+   for(int i = 0; i < h; i += 2) {
+
+       int hi = i / 2;
+       uint8_t *srcLineY0 = src_y + i * srcRowStrideY;
+       uint8_t *srcLineY1 = srcLineY0 + srcRowStrideY;
+       uint8_t *srcLineU = src_u + hi * srcRowStrideU;
+       uint8_t *srcLineV = src_v + hi * srcRowStrideV;
+
+       uint8_t *dstLineY0 = dst_y + i * dstRowStrideY;
+       uint8_t *dstLineY1 = dstLineY0 + dstRowStrideY;
+       uint8_t *dstLineU = dst_u + hi * dstRowStrideU;
+       uint8_t *dstLineV = dst_v + hi * dstRowStrideV;
+
+       for(int j = 0; j < w; j += 2) {
+           *dstLineY0 = *srcLineY0;
+           dstLineY0 += dstPixelStrideY;
+           srcLineY0 += srcPixelStrideY;
+
+           *dstLineY0 = *srcLineY0;
+           dstLineY0 += dstPixelStrideY;
+           srcLineY0 += srcPixelStrideY;
+
+           *dstLineY1 = *srcLineY1;
+           dstLineY1 += dstPixelStrideY;
+           srcLineY1 += srcPixelStrideY;
+
+           *dstLineY1 = *srcLineY1;
+           dstLineY1 += dstPixelStrideY;
+           srcLineY1 += srcPixelStrideY;
+
+           *dstLineU = *srcLineU;
+           *dstLineV = *srcLineV;
+           srcLineU += srcPixelStrideU;
+           srcLineV += srcPixelStrideV;
+           dstLineU += dstPixelStrideU;
+           dstLineV += dstPixelStrideV;
+       }
+   }
+}
+
+JNIEXPORT void JNICALL
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawPicture(JNIEnv *env, jobject obj,
+                                                                jobject src, jint px, jint py,
+                                                                jint imgw, jint imgh, jint w,  jint h,
+                                                                jobject dstBuffY, jint dstRowStrideY, jint dstPixelStrideY,
+                                                                jobject dstBuffU, jint dstRowStrideU, jint dstPixelStrideU,
+                                                                jobject dstBuffV, jint dstRowStrideV, jint dstPixelStrideV) {
+
+    uint8_t *src_y = (*env)->GetDirectBufferAddress(env, src);
+
+    int imgw_half = imgw / 2, imgh_half = imgh / 2;
+    uint8_t *src_u = src_y + imgw * imgh;
+    uint8_t *src_v = src_u + imgw_half * imgh_half;
+    uint8_t *src_a = src_v + imgw_half * imgh_half;
+
+    uint8_t *dst_y = (*env)->GetDirectBufferAddress(env, dstBuffY);
+    uint8_t *dst_u = (*env)->GetDirectBufferAddress(env, dstBuffU);
+    uint8_t *dst_v = (*env)->GetDirectBufferAddress(env, dstBuffV);
+
+    #pragma omp parallel for
+    for(int i = 0; i < imgh_half; i++) {
+
+        uint8_t *dst_y_line0 = dst_y + px * dstPixelStrideY + (i * 2 + py) * dstRowStrideY, *dst_y_line1 = dst_y_line0 + dstRowStrideY;
+        uint8_t *src_y_line0 = src_y + i * 2 * imgw, *src_y_line1 = src_y_line0 + imgw;
+
+        int quartPositionSrc = i * imgw_half;
+        uint8_t *src_u_line = src_u + quartPositionSrc;
+        uint8_t *dst_u_line = dst_u + (i + (py / 2)) * dstRowStrideU + (px / 2) * dstPixelStrideU;
+        uint8_t *src_v_line = src_v + quartPositionSrc;
+        uint8_t *dst_v_line = dst_v + (i + (py / 2)) * dstRowStrideV + (px / 2) * dstPixelStrideV;
+        uint8_t *src_a_line = src_a + quartPositionSrc;
+
+        for(int j = 0; j < imgw_half; j++) {
+            uint32_t a = *src_a_line, ra = 255 - a;
+            *dst_u_line = (uint8_t) ((((uint32_t) *src_u_line) * a + ((uint32_t) *dst_u_line) * ra) >> 8);
+            *dst_v_line = (uint8_t) ((((uint32_t) *src_v_line) * a + ((uint32_t) *dst_v_line) * ra) >> 8);
+            src_u_line++;
+            dst_u_line += dstPixelStrideU;
+            src_v_line++;
+            dst_v_line += dstPixelStrideV;
+            src_a_line++;
+
+            *dst_y_line0 = (uint8_t) ((((uint32_t) *src_y_line0) * a + ((uint32_t) *dst_y_line0) * ra) >> 8);
+            dst_y_line0 += dstPixelStrideY;
+            src_y_line0++;
+            *dst_y_line0 = (uint8_t) ((((uint32_t) *src_y_line0) * a + ((uint32_t) *dst_y_line0) * ra) >> 8);
+            dst_y_line0 += dstPixelStrideY;
+            src_y_line0++;
+            *dst_y_line1 = (uint8_t) ((((uint32_t) *src_y_line1) * a + ((uint32_t) *dst_y_line1) * ra) >> 8);
+            dst_y_line1 += dstPixelStrideY;
+            src_y_line1++;
+            *dst_y_line1 = (uint8_t) ((((uint32_t) *src_y_line1) * a + ((uint32_t) *dst_y_line1) * ra) >> 8);
+            dst_y_line1 += dstPixelStrideY;
+            src_y_line1++;
+        }
+    }
+}

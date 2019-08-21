@@ -17,7 +17,26 @@ class VideoPictureFileChooser {
     private String mVideoFilePath;
     private String mPauseFile;
     private List<String> mImageFilePathes = new ArrayList<>();
+    public String mOutFilePath = null;// "/storage/emulated/0";
     public boolean mIsPauseSelect;
+
+    public enum DeviceName {
+        None, HighScreen, BlackShark
+    }
+
+    public VideoPictureFileChooser(DeviceName name) {
+        String hs;
+        switch (name) {
+            case HighScreen: hs = "/storage/sdcard0/RenderTest/"; break;
+            case BlackShark: hs = "/storage/self/primary/RenderTest/"; break;
+            default: return;
+        }
+        mOutFilePath = hs + "rendered.mp4";
+        mPauseFile = hs + "pause.mp4";
+        mVideoFilePath = hs + "VID_20190816_133439.mp4";
+        mImageFilePathes.add(hs + "giphy.gif");
+        mImageFilePathes.add(hs + "i.jpg");
+    }
 
     void chooseVideo(Activity activity) {
         Intent intent = new Intent(activity, VideoPickActivity.class);

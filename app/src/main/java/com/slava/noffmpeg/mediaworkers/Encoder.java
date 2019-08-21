@@ -1,5 +1,6 @@
 package com.slava.noffmpeg.mediaworkers;
 
+import android.media.Image;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
@@ -20,10 +21,13 @@ import java.nio.ByteBuffer;
 import static android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG;
 import static android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME;
 import static android.media.MediaCodec.INFO_TRY_AGAIN_LATER;
+import static com.slava.noffmpeg.mediaworkers.VideoProcessor.copyPicture;
 
 public class Encoder {
 
     public static final int TIMEOUT_US = 10000;
+    private final int mWidth;
+    private final int mHeight;
     private int mVideoTrackIndex = -1;
     private MediaMuxer mMuxer = null;
     private long mFramesEncoded = 0;
@@ -36,6 +40,7 @@ public class Encoder {
     private Surface mSurface;
     private final MediaCodec.BufferInfo mInfo = new MediaCodec.BufferInfo();
     private static final boolean DEBUG = true;
+    private int mInIndex;
 
 
     //Нужно запилить паузу. Варианты:
@@ -45,6 +50,8 @@ public class Encoder {
 
     public Encoder(String path, Size size, int frameRate, @NonNull MediaCodecInfo codecInfo, int colorFormat, float bitsPerPixel, boolean withSurface) {
         mFrameRate = frameRate;
+        mWidth = size.width;
+        mHeight = size.height;
         try {
             MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, colorFormat, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
@@ -115,6 +122,37 @@ public class Encoder {
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height * 3 / 2);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
         return format;
+    }
+
+    public void writeInputImage(Image dstImage, MediaCodec.BufferInfo info) {
+        int inIndex = mEncoder.dequeueInputBuffer(TIMEOUT_US);
+        if (inIndex < 0) return;
+        ByteBuffer buffer = mEncoder.getInputBuffer(inIndex);
+        if(buffer == null) return;
+        int rem = buffer.remaining();
+        Image srcImage = mEncoder.getInputImage(inIndex);
+
+        Image.Plane[] inPlanes = dstImage.getPlanes();
+        if(inPlanes.length < 3) return;
+        Image.Plane[] outPlanes = srcImage.getPlanes();
+        if(outPlanes.length < 3) return;
+
+        Image.Plane pi0 = inPlanes[0];
+        Image.Plane pi1 = inPlanes[1];
+        Image.Plane pi2 = inPlanes[2];
+        Image.Plane po0 = outPlanes[0];
+        Image.Plane po1 = outPlanes[1];
+        Image.Plane po2 = outPlanes[2];
+
+        copyPicture(mWidth, mHeight,
+                pi0.getBuffer(), pi0.getRowStride(), pi0.getPixelStride(),
+                pi1.getBuffer(), pi1.getRowStride(), pi1.getPixelStride(),
+                pi2.getBuffer(), pi2.getRowStride(), pi2.getPixelStride(),
+                po0.getBuffer(), po0.getRowStride(), po0.getPixelStride(),
+                po1.getBuffer(), po1.getRowStride(), po1.getPixelStride(),
+                po2.getBuffer(), po2.getRowStride(), po2.getPixelStride());
+
+        mEncoder.queueInputBuffer(inIndex, 0, rem, info.presentationTimeUs, info.flags);
     }
 
     public void writeBuffer(ByteBuffer inBuffer, MediaCodec.BufferInfo info) {

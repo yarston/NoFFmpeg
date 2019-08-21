@@ -29,6 +29,7 @@ public class Decoder {
     private boolean mIsReady = false;
     private Image mOutputImage;
     public ByteBuffer mOutputBuffer;
+    private ImageCallback mImageCallback;
 
     public Decoder(String videoPath) {
         mVideoPath = videoPath;
@@ -125,10 +126,7 @@ public class Decoder {
                 break;
             default:
                 if (mInfo.size > 0) {
-                    mOutputBuffer = mDecoder.getOutputBuffer(outIndex);
-                    mOutputBuffer.position(mInfo.offset);
-                    mOutputBuffer.limit(mInfo.offset + mInfo.size);
-                    if(mCallback != null) mCallback.run();
+                    if(mImageCallback != null) mImageCallback.onImageReady(mDecoder.getOutputImage(outIndex));
                 }
                 if (outIndex >= 0) mDecoder.releaseOutputBuffer(outIndex, false);
                 break;
@@ -140,5 +138,9 @@ public class Decoder {
         mDecoder.stop();
         mDecoder.release();
         mDecoder = null;
+    }
+
+    public void setImageCallback(ImageCallback imageCallback) {
+        mImageCallback = imageCallback;
     }
 }

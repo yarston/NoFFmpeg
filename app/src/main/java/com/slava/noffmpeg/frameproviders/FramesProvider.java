@@ -74,15 +74,7 @@ public abstract class FramesProvider {
         if (height % 2 == 1) height++;
         Bitmap scaled = Bitmap.createScaledBitmap(bmp, width, height, true);
         ByteBuffer bb = ByteBuffer.allocateDirect(width * height * 7 / 4);
-
-        switch (colorFormat) {
-            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar:
-                bitmapRGBA8888toYUV420Planar(scaled, bb, width, height, false, false);
-                break;
-            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar:
-                bitmapRGBA8888toYUV420SemiPlanar(scaled, bb, width, height, false, false);
-        }
-
+        bitmapRGBA8888toYUV420Planar(scaled, bb, width, height, false, false);
         return new EncodedFrame(bb, 0);
     }
 

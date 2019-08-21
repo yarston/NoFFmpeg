@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.display.DisplayManager;
+import android.media.Image;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
@@ -30,14 +31,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.slava.noffmpeg.frameproviders.FramesProvider;
-import com.slava.noffmpeg.frameproviders.ImageFramesProvider;
 import com.slava.noffmpeg.mediaworkers.Decoder;
 import com.slava.noffmpeg.mediaworkers.Encoder;
 import com.slava.noffmpeg.mediaworkers.Size;
 import com.slava.noffmpeg.mediaworkers.VideoProcessor;
 
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -45,9 +44,11 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import lib.folderpicker.FolderPicker;
 
+import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.BlackShark;
+import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.HighScreen;
+import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.None;
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectCodec;
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectColorFormat;
-import static com.slava.noffmpeg.mediaworkers.YUVTest.getNV21;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -62,19 +63,18 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.textBpp) TextView mTextBpp;
     @BindView(R.id.btn_select_res) Spinner mSelect;
 
-    private static final float BPP_STEP = 0.05f;
+    private static final float BPP_STEP = 0.0001f;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
     private static final int FOLDERPICKER_CODE = 2;
     private static final int PERMISSION_CODE = 3;
     private static final boolean TEST_SEMIPLANAR = false;
-    private final VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser();
+    private final VideoPictureFileChooser mFileChooser = new VideoPictureFileChooser(None);
     private Handler mDrainHandler = null;
     private Encoder mScreenEncoder;
     private MediaProjection mMediaProjection;
     private Size mVideoSize = new Size(1280, 720);
     private HandlerThread mRenderThread = new HandlerThread("render_thread");
     private FramesProvider mPauseFramesProvider = null;
-    private String mOutFilePath = null;// "/storage/emulated/0";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -137,10 +137,12 @@ public class MainActivity extends AppCompatActivity {
         mDrainHandler = new Handler(mRenderThread.getLooper());
         //mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
         getPermission();
+        mSeekBar.setProgress(20);
+        //prepareFile2File();
     }
 
     private void prepareFile2File() {
-        if (mOutFilePath == null) {
+        if (mFileChooser.mOutFilePath == null) {
             Intent intent = new Intent(this, FolderPicker.class);
             startActivityForResult(intent, FOLDERPICKER_CODE);
         } else Executors.newSingleThreadExecutor().submit(this::processFile2File);
@@ -154,7 +156,7 @@ public class MainActivity extends AppCompatActivity {
 
         Size size = decoder.getSize();
         Log.v("Decoder", "mVideoSize = " + size.width + " x " + size.height);
-        File f = new File(mOutFilePath);
+        File f = new File(mFileChooser.mOutFilePath);
         MediaFormat inputFormat = decoder.getFormat();
         int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : 30;
         Log.v("Decoder", "inputFormat = " + inputFormat);
@@ -164,32 +166,21 @@ public class MainActivity extends AppCompatActivity {
         int colorFormat = outputFormat.containsKey(MediaFormat.KEY_COLOR_FORMAT) ? outputFormat.getInteger(MediaFormat.KEY_COLOR_FORMAT) : selectColorFormat(codecInfo);
         if(TEST_SEMIPLANAR) colorFormat = 21;
         Log.v("Decoder", "colorFromat = " + colorFormat);
+        Log.v("Decoder", mFileChooser.getStatus());
 
         mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, mSeekBar.getProgress() * BPP_STEP, false);
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size, colorFormat);
 
         AtomicInteger nFrames = new AtomicInteger();
-        if(TEST_SEMIPLANAR) {
-            byte[] bytes = getNV21(getResources(), size.width, size.height);
-            ByteBuffer bb = ByteBuffer.allocateDirect(bytes.length);
-            bb.put(bytes);
-            decoder.setCallback(() -> {
-                bb.rewind();
-                processor.process(bb);
-                if (nFrames.get() % 20 == 0) Log.v("Decoder", "frame " + nFrames);
-                mScreenEncoder.writeBuffer(bb, decoder.mInfo);
-                mScreenEncoder.encodeFrame();
-                mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
-            });
-        } else {
-            decoder.setCallback(() -> {
-                processor.process(decoder.mOutputBuffer);
-                if (nFrames.get() % 20 == 0) Log.v("Decoder", "frame " + nFrames);
-                mScreenEncoder.writeBuffer(decoder.mOutputBuffer, decoder.mInfo);
-                mScreenEncoder.encodeFrame();
-                mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
-            });
-        }
+
+        decoder.setImageCallback(image -> {
+            Log.v("Decoder", "frame: " + nFrames + " size: " + decoder.mInfo.size + " flags: " + decoder.mInfo.flags);
+            processor.process(image);
+            mScreenEncoder.writeInputImage(image, decoder.mInfo);
+            mScreenEncoder.encodeFrame();
+            image.close();
+            mProgress.post(() -> mProgress.setProgress(nFrames.incrementAndGet()));
+        });
 
         runOnUiThread(() -> {
             mProgress.setMax(decoder.getMaxFrames());
@@ -249,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
                 mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);
                 mDrainHandler.postDelayed(this::drain, 10);
             } else if (resultCode == Activity.RESULT_OK) {
-                mOutFilePath = intent.getExtras().getString("data") + "/out2.mp4";
+                mFileChooser.mOutFilePath = intent.getExtras().getString("data") + "/out2.mp4";
                 prepareFile2File();
             }
     }
