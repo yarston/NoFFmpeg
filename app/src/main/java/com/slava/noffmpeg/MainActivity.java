@@ -44,6 +44,7 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import lib.folderpicker.FolderPicker;
 
+import static android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface;
 import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.BlackShark;
 import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.HighScreen;
 import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.None;
@@ -224,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
                 mStatus.setText(mFileChooser.getStatus());
                 if(mFileChooser.mIsPauseSelect) {
                     mFileChooser.mIsPauseSelect = false;
-                    mPauseFramesProvider = FramesProvider.fromFile(mFileChooser.getPausePath(), mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
+                    mPauseFramesProvider = FramesProvider.fromFile(mFileChooser.getPausePath(), mVideoSize.width, mVideoSize.height, COLOR_FormatSurface, 1.0f, true);
                     if (mPauseFramesProvider == null) Toast.makeText(this, R.string.file_not_suitable, Toast.LENGTH_SHORT).show();
                 }
             } else if (requestCode == REQUEST_MEDIA_PROJECTION) {
@@ -235,7 +236,7 @@ public class MainActivity extends AppCompatActivity {
                 if (defaultDisplay == null) throw new RuntimeException("No display found.");
                 mScreenRecord.setText("Стоп");
                 MediaCodecInfo codecInfo = selectCodec();
-                mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, 30, codecInfo, selectColorFormat(codecInfo), mSeekBar.getProgress() * BPP_STEP, true);
+                mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, 30, mSeekBar.getProgress() * BPP_STEP, true);
                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                 mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);
                 mDrainHandler.postDelayed(this::drain, 10);

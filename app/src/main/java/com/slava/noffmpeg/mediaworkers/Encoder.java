@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import static android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG;
 import static android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME;
 import static android.media.MediaCodec.INFO_TRY_AGAIN_LATER;
+import static android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface;
 import static com.slava.noffmpeg.mediaworkers.VideoProcessor.copyPicture;
 
 public class Encoder {
@@ -57,6 +58,23 @@ public class Encoder {
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             //mEncoder = MediaCodec.createEncoderByType("video/avc");
             mEncoder = MediaCodec.createByCodecName(codecInfo.getName());
+            mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            if(withSurface) mSurface = mEncoder.createInputSurface();
+            mEncoder.start();
+            if(DEBUG) Log.d("Encoder", "encoder strarted");
+        } catch (IOException e) {
+            if(DEBUG) e.printStackTrace();
+        }
+    }
+
+    public Encoder(String path, Size size, int frameRate, float bitsPerPixel, boolean withSurface) {
+        mFrameRate = frameRate;
+        mWidth = size.width;
+        mHeight = size.height;
+        try {
+            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, COLOR_FormatSurface, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
+            mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+            mEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
             if(withSurface) mSurface = mEncoder.createInputSurface();
             mEncoder.start();
