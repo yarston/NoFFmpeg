@@ -36,12 +36,12 @@ public class Encoder {
     private FramesProvider mPauseFrame = null;
     private boolean mRequestResume = false;
     private boolean mRequestKeyFrame = false;
-    private boolean mIsFirstPauseFrame = false;
     private MediaCodec mEncoder;
     private Surface mSurface;
     private final MediaCodec.BufferInfo mInfo = new MediaCodec.BufferInfo();
     private static final boolean DEBUG = true;
     private int mInIndex;
+    private long mLastTime;
 
 
     //Нужно запилить паузу. Варианты:
@@ -49,13 +49,14 @@ public class Encoder {
     //2. Писать экрвн в промежуточный канвас, рисовать его на холсте и отправлять в канвас кодека, но это оверхэд
     //3. Использовать 2 кодека со своими холстами и переключать их в микшере - так и сделаю.
 
-    public Encoder(String path, Size size, int frameRate, @NonNull MediaCodecInfo codecInfo, int colorFormat, float bitsPerPixel, boolean withSurface) {
+    public Encoder(String path, Size size, int frameRate, @NonNull MediaCodecInfo codecInfo, int colorFormat, int rotation, boolean withSurface) {
         mFrameRate = frameRate;
         mWidth = size.width;
         mHeight = size.height;
         try {
-            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, colorFormat, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
+            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, colorFormat, mFrameRate * size.width * size.height / 40);
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+            mMuxer.setOrientationHint(rotation);
             //mEncoder = MediaCodec.createEncoderByType("video/avc");
             mEncoder = MediaCodec.createByCodecName(codecInfo.getName());
             mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
@@ -72,7 +73,7 @@ public class Encoder {
         mWidth = size.width;
         mHeight = size.height;
         try {
-            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, COLOR_FormatSurface, (int) (bitsPerPixel * mFrameRate * size.width * size.height));
+            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, COLOR_FormatSurface, mFrameRate * size.width * size.height / 40);
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             mEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
@@ -132,10 +133,10 @@ public class Encoder {
         }
     }
 
-    public static MediaFormat getDefaultFormat(int width, int height, int frameRate, int colorFormat, float bitsPerPixel) {
+    public static MediaFormat getDefaultFormat(int width, int height, int frameRate, int colorFormat, int bitRate) {
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, (int) (bitsPerPixel * frameRate * width * height));
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000);//(int) ((frameRate * width * height) * bitsPerPixel));
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height * 3 / 2);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
@@ -192,10 +193,11 @@ public class Encoder {
     }
 
     public boolean encodeFrame() {
-        if (isPaused() && !mRequestResume) {
-            writeEncodedData(mIsFirstPauseFrame ? mPauseFrame.first() : mPauseFrame.next());
-            mIsFirstPauseFrame = false;
-            return false;
+        if (isPaused()) {
+            if(!mRequestResume) {
+                writeEncodedData(mPauseFrame.next());
+                return false;
+            }
         }
 
         if (mRequestKeyFrame) {
@@ -254,7 +256,7 @@ public class Encoder {
     public void setPause(FramesProvider pauseFrame) {
         if (mPauseFrame == null) {
             mPauseFrame = pauseFrame;
-            mIsFirstPauseFrame = true;
+            mPauseFrame.reset();
         }
     }
 

@@ -4,6 +4,8 @@ import android.media.Image;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
+import android.os.Build;
 import android.util.Log;
 import android.view.Surface;
 
@@ -30,10 +32,22 @@ public class Decoder {
     private Image mOutputImage;
     public ByteBuffer mOutputBuffer;
     private ImageCallback mImageCallback;
+    private int mRotation;
 
     public Decoder(String videoPath) {
         mVideoPath = videoPath;
         mExtractor = new MediaExtractor();
+        MediaMetadataRetriever m = new MediaMetadataRetriever();
+        m.setDataSource(videoPath);
+        String s = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+        if(s != null) {
+            switch (s) {
+                case "90" : mRotation = 90; break;
+                case "180" : mRotation = 180; break;
+                case "270" : mRotation = 270; break;
+            }
+        }
+
         try {
             mExtractor.setDataSource(mVideoPath);
         } catch (IOException e) {
@@ -142,5 +156,9 @@ public class Decoder {
 
     public void setImageCallback(ImageCallback imageCallback) {
         mImageCallback = imageCallback;
+    }
+
+    public int getRotation() {
+        return mRotation;
     }
 }

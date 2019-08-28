@@ -14,6 +14,7 @@ import static com.slava.noffmpeg.mediaworkers.VideoProcessor.convert_YUV420SemiP
 public class VideoFramesProvider extends FramesProvider {
 
     private final int mColorFormat;
+    private final int mRotation;
     private Bitmap mBufferBitmap;
     private boolean isFullyReadden = false;
     private final int mHeight;
@@ -30,11 +31,12 @@ public class VideoFramesProvider extends FramesProvider {
      * @param bpp Бит на пиксель - задаёт качество
      */
 
-    VideoFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded) {
+    VideoFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded, int rotation) {
         mWidth = width;
         mHeight = height;
         mEncoded = encoded;
         mColorFormat = colorFormat;
+        mRotation = rotation;
         mDecoder = new Decoder(path);
         mDecoder.prepare(null);
         mDecoder.setCallback(() -> {
@@ -47,7 +49,7 @@ public class VideoFramesProvider extends FramesProvider {
                     convert_YUV420SemiPlanar_to_RGBA(mBufferBitmap, mDecoder.mOutputBuffer);
             }
         });
-        if(encoded) mEncoder = new BitmapEncoder(width, height, colorFormat, bpp);
+        if(encoded) mEncoder = new BitmapEncoder(width, height, colorFormat, bpp, rotation);
     }
 
 
@@ -68,7 +70,7 @@ public class VideoFramesProvider extends FramesProvider {
         if(isFullyReadden) return super.next();
         mDecoder.decodeFrame();
         if(mBufferBitmap == null) return null;
-        EncodedFrame frame = mEncoded ? mEncoder.encode(mBufferBitmap) : convertFrame(mBufferBitmap, mWidth, mHeight, mColorFormat);
+        EncodedFrame frame = mEncoded ? mEncoder.encode(mBufferBitmap) : convertFrame(mBufferBitmap, mWidth, mHeight, mColorFormat, mRotation);
         if(frame!= null) mFrames.add(frame);
         if((mDecoder.mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) isFullyReadden = true;
         if(isFullyReadden) {

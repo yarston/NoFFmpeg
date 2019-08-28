@@ -12,19 +12,21 @@ public class GifFramesProvider extends FramesProvider {
     private final int mWidth;
     private final boolean mEncoded;
     private final int mColorFormat;
+    private final int mRotation;
     private long mGifptr = 0;
     private Bitmap mBufferBitmap;
     private boolean isFullyReadden = false;
     private BitmapEncoder mEncoder = null;
 
-    public GifFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded) {
+    public GifFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded, int rotation) {
         mWidth = width;
         mHeight = height;
         mEncoded = encoded;
         mColorFormat = colorFormat;
+        mRotation = rotation;
         mGifptr = openGifbyPath(path);
         if(mGifptr == 0) return;
-        if(encoded) mEncoder = new BitmapEncoder(width, height, colorFormat, bpp);
+        if(encoded) mEncoder = new BitmapEncoder(width, height, colorFormat, bpp, rotation);
     }
 
     @Nullable
@@ -46,7 +48,7 @@ public class GifFramesProvider extends FramesProvider {
         if(mBufferBitmap == null) mBufferBitmap = Bitmap.createBitmap(getWidth(mGifptr), getHeight(mGifptr), Bitmap.Config.ARGB_8888);
         if(fillNextBitmap(mBufferBitmap, mGifptr) == 0) isFullyReadden = true;
 
-        EncodedFrame frame = mEncoded ? mEncoder.encode(mBufferBitmap) : convertFrame(mBufferBitmap, mWidth, mHeight, mColorFormat);
+        EncodedFrame frame = mEncoded ? mEncoder.encode(mBufferBitmap) : convertFrame(mBufferBitmap, mWidth, mHeight, mColorFormat, mRotation);
 
         mFrames.add(frame);
         if(isFullyReadden) {

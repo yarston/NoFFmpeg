@@ -64,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.textBpp) TextView mTextBpp;
     @BindView(R.id.btn_select_res) Spinner mSelect;
 
-    private static final float BPP_STEP = 0.0001f;
+    private static final float BPP_STEP = 0.005f;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
     private static final int FOLDERPICKER_CODE = 2;
     private static final int PERMISSION_CODE = 3;
@@ -138,7 +138,9 @@ public class MainActivity extends AppCompatActivity {
         mDrainHandler = new Handler(mRenderThread.getLooper());
         //mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
         getPermission();
-        mSeekBar.setProgress(20);
+        mSeekBar.setEnabled(false);
+        //FramesProvider.getEmptyBlock(1920, 720);
+        //FramesProvider.getEmptyBlock(848, 480);
         //prepareFile2File();
     }
 
@@ -169,8 +171,8 @@ public class MainActivity extends AppCompatActivity {
         Log.v("Decoder", "colorFromat = " + colorFormat);
         Log.v("Decoder", mFileChooser.getStatus());
 
-        mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, mSeekBar.getProgress() * BPP_STEP, false);
-        VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size, colorFormat);
+        mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, decoder.getRotation(), false);
+        VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size, colorFormat, decoder.getRotation());
 
         AtomicInteger nFrames = new AtomicInteger();
 
@@ -216,7 +218,7 @@ public class MainActivity extends AppCompatActivity {
         mDrainHandler.removeCallbacks(this::drain);
         if (mScreenEncoder == null) return;
         while (mScreenEncoder.encodeFrame());
-        mDrainHandler.postDelayed(this::drain, 10);
+        mDrainHandler.postDelayed(this::drain, 33);
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
@@ -225,7 +227,7 @@ public class MainActivity extends AppCompatActivity {
                 mStatus.setText(mFileChooser.getStatus());
                 if(mFileChooser.mIsPauseSelect) {
                     mFileChooser.mIsPauseSelect = false;
-                    mPauseFramesProvider = FramesProvider.fromFile(mFileChooser.getPausePath(), mVideoSize.width, mVideoSize.height, COLOR_FormatSurface, 1.0f, true);
+                    mPauseFramesProvider = FramesProvider.fromFile(mFileChooser.getPausePath(), mVideoSize.width, mVideoSize.height, COLOR_FormatSurface, 1.0f, true, 0);
                     if (mPauseFramesProvider == null) Toast.makeText(this, R.string.file_not_suitable, Toast.LENGTH_SHORT).show();
                 }
             } else if (requestCode == REQUEST_MEDIA_PROJECTION) {

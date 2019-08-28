@@ -21,12 +21,12 @@ public class VideoProcessor {
     private final int IMG_HEIGHT = 200;
     private final int mColorFormat;
 
-    public VideoProcessor(List<String> imagePathes, Size size, int colorFormat) {
+    public VideoProcessor(List<String> imagePathes, Size size, int colorFormat, int rotation) {
         mSize = size;
         mColorFormat = colorFormat;
         mImageBuffersYuva.clear();
         for (String path : imagePathes) {
-            mImageBuffersYuva.add(FramesProvider.fromFile(path, IMG_WIDTH, IMG_HEIGHT, colorFormat, 0.0f, false));
+            mImageBuffersYuva.add(FramesProvider.fromFile(path, IMG_WIDTH, IMG_HEIGHT, colorFormat, 0.0f, false, rotation));
         }
     }
 
