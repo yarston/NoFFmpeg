@@ -6,7 +6,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.display.DisplayManager;
-import android.media.Image;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
@@ -45,8 +44,6 @@ import butterknife.ButterKnife;
 import lib.folderpicker.FolderPicker;
 
 import static android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface;
-import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.BlackShark;
-import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.HighScreen;
 import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.None;
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectCodec;
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectColorFormat;
@@ -64,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.textBpp) TextView mTextBpp;
     @BindView(R.id.btn_select_res) Spinner mSelect;
 
-    private static final float BPP_STEP = 0.005f;
+    private static final float BPP_STEP = 0.00125f;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
     private static final int FOLDERPICKER_CODE = 2;
     private static final int PERMISSION_CODE = 3;
@@ -138,9 +135,6 @@ public class MainActivity extends AppCompatActivity {
         mDrainHandler = new Handler(mRenderThread.getLooper());
         //mPauseFramesProvider = new ImageFramesProvider(getResources(), R.raw.i, mVideoSize.width, mVideoSize.height, selectColorFormat(selectCodec()), 1.0f, true);
         getPermission();
-        mSeekBar.setEnabled(false);
-        //FramesProvider.getEmptyBlock(1920, 720);
-        //FramesProvider.getEmptyBlock(848, 480);
         //prepareFile2File();
     }
 
@@ -148,30 +142,32 @@ public class MainActivity extends AppCompatActivity {
         if (mFileChooser.mOutFilePath == null) {
             Intent intent = new Intent(this, FolderPicker.class);
             startActivityForResult(intent, FOLDERPICKER_CODE);
-        } else Executors.newSingleThreadExecutor().submit(this::processFile2File);
+        } else Executors.newSingleThreadExecutor().submit(() -> {
+            if (!processFile2File()) {
+                runOnUiThread(() -> Toast.makeText(this, "Файл не может быть обработан", Toast.LENGTH_SHORT).show());
+            }
+        });
     }
 
-    private void processFile2File() {
+    private boolean processFile2File() {
         long startTime = System.currentTimeMillis();
-        if (mFileChooser.getVideoPath() == null) return;
+        if (mFileChooser.getVideoPath() == null) return false;
         Decoder decoder = new Decoder(mFileChooser.getVideoPath());
         decoder.prepare(null);
 
         Size size = decoder.getSize();
         Log.v("Decoder", "mVideoSize = " + size.width + " x " + size.height);
         File f = new File(mFileChooser.mOutFilePath);
-        MediaFormat inputFormat = decoder.getFormat();
-        int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : 30;
-        Log.v("Decoder", "inputFormat = " + inputFormat);
+        int frameRate = decoder.getFrameRate();
+        Log.v("Decoder", "inputFormat = " + decoder.getFormat());
         MediaFormat outputFormat = decoder.getCodec().getOutputFormat();
-        Log.v("Decoder", "outputFormat = " + outputFormat);
+        Log.v("Decoder", "outputFormat = " + decoder);
         MediaCodecInfo codecInfo = selectCodec();
         int colorFormat = outputFormat.containsKey(MediaFormat.KEY_COLOR_FORMAT) ? outputFormat.getInteger(MediaFormat.KEY_COLOR_FORMAT) : selectColorFormat(codecInfo);
-        if(TEST_SEMIPLANAR) colorFormat = 21;
         Log.v("Decoder", "colorFromat = " + colorFormat);
         Log.v("Decoder", mFileChooser.getStatus());
 
-        mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, decoder.getRotation(), false);
+        mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, decoder.getRotation(), false, mSeekBar.getProgress() * BPP_STEP);
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size, colorFormat, decoder.getRotation());
 
         AtomicInteger nFrames = new AtomicInteger();
@@ -205,13 +201,18 @@ public class MainActivity extends AppCompatActivity {
 
         int finalColorFormat = colorFormat;
         runOnUiThread(() -> {
-            mStatus.setText(String.format("completed %d frames (%dx%d) in %.2f sec, colorformat=%d",
-                    nFrames.get(), size.width, size.height, (System.currentTimeMillis() - startTime) * 0.001f, finalColorFormat));
+            if(nFrames.get() > 0) {
+                mStatus.setText(String.format("completed %d frames (%dx%d) in %.2f sec, colorformat=%d",
+                        nFrames.get(), size.width, size.height, (System.currentTimeMillis() - startTime) * 0.001f, finalColorFormat));
+            } else {
+                mStatus.setText("файл не может быть обработан");
+            }
             mChooseVideo.setEnabled(true);
             mChooseImages.setEnabled(true);
             mProcess.setEnabled(true);
             mProgress.setProgress(mProgress.getMax());
         });
+        return nFrames.get() > 0;
     }
 
     private void drain() {
@@ -237,7 +238,6 @@ public class MainActivity extends AppCompatActivity {
                 Display defaultDisplay = dm.getDisplay(Display.DEFAULT_DISPLAY);
                 if (defaultDisplay == null) throw new RuntimeException("No display found.");
                 mScreenRecord.setText("Стоп");
-                MediaCodecInfo codecInfo = selectCodec();
                 mScreenEncoder = new Encoder("/sdcard/video.mp4", mVideoSize, 30, mSeekBar.getProgress() * BPP_STEP, true);
                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                 mMediaProjection.createVirtualDisplay("Recording Display", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, mScreenEncoder.getSurface(),null, null);

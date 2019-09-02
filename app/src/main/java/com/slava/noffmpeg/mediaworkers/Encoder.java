@@ -49,12 +49,13 @@ public class Encoder {
     //2. Писать экрвн в промежуточный канвас, рисовать его на холсте и отправлять в канвас кодека, но это оверхэд
     //3. Использовать 2 кодека со своими холстами и переключать их в микшере - так и сделаю.
 
-    public Encoder(String path, Size size, int frameRate, @NonNull MediaCodecInfo codecInfo, int colorFormat, int rotation, boolean withSurface) {
+    public Encoder(String path, Size size, int frameRate, @NonNull MediaCodecInfo codecInfo, int colorFormat, int rotation, boolean withSurface, float bitsPerPixel) {
         mFrameRate = frameRate;
         mWidth = size.width;
         mHeight = size.height;
         try {
-            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, colorFormat, mFrameRate * size.width * size.height / 40);
+            int bitrate = (int) ((mFrameRate * size.width * size.height) * bitsPerPixel);
+            MediaFormat format = getDefaultFormat(size.width, size.height, mFrameRate, colorFormat, bitrate);
             mMuxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             mMuxer.setOrientationHint(rotation);
             //mEncoder = MediaCodec.createEncoderByType("video/avc");
@@ -136,7 +137,7 @@ public class Encoder {
     public static MediaFormat getDefaultFormat(int width, int height, int frameRate, int colorFormat, int bitRate) {
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000);//(int) ((frameRate * width * height) * bitsPerPixel));
+        format.setInteger(MediaFormat.KEY_BIT_RATE, bitRate);//(int) ((frameRate * width * height) * bitsPerPixel));
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height * 3 / 2);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);

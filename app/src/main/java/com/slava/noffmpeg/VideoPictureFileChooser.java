@@ -21,7 +21,7 @@ class VideoPictureFileChooser {
     public boolean mIsPauseSelect;
 
     public enum DeviceName {
-        None, HighScreen, BlackShark
+        None, HighScreen, BlackShark, Generic
     }
 
     public VideoPictureFileChooser(DeviceName name) {
@@ -29,11 +29,13 @@ class VideoPictureFileChooser {
         switch (name) {
             case HighScreen: hs = "/storage/sdcard0/RenderTest/"; break;
             case BlackShark: hs = "/storage/self/primary/RenderTest/"; break;
+            case Generic: hs = "/sdcard/RenderTest/"; break;
             default: return;
         }
         mOutFilePath = hs + "rendered.mp4";
         mPauseFile = hs + "pause.mp4";
-        mVideoFilePath = hs + "VID_20190816_133439.mp4";
+        //mVideoFilePath = hs + "VID_20190816_133439.mp4";
+        mVideoFilePath = hs + "VID-20190711-WA0000.mp4";
         mImageFilePathes.add(hs + "giphy.gif");
         mImageFilePathes.add(hs + "i.jpg");
     }

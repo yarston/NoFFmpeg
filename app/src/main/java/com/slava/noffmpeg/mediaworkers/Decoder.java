@@ -20,7 +20,7 @@ public class Decoder {
     private final MediaExtractor mExtractor;
     private long mDuration;
     private MediaCodec mDecoder;
-    private int mFPS = 30;
+    private int mFPS = -1;
     private String mVideoPath;
     private MediaFormat mFormat;
     public MediaCodec.BufferInfo mInfo;
@@ -39,9 +39,13 @@ public class Decoder {
         mExtractor = new MediaExtractor();
         MediaMetadataRetriever m = new MediaMetadataRetriever();
         m.setDataSource(videoPath);
-        String s = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
-        if(s != null) {
-            switch (s) {
+
+        String strFramerate = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE);
+        if(strFramerate != null) mFPS = (int) Float.parseFloat(strFramerate);
+
+        String strRotation = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+        if(strRotation != null) {
+            switch (strRotation) {
                 case "90" : mRotation = 90; break;
                 case "180" : mRotation = 180; break;
                 case "270" : mRotation = 270; break;
@@ -67,6 +71,8 @@ public class Decoder {
                 break;
             }
         }
+        Log.v("Decoder", "mFPS=" + mFPS);
+        if(mFPS == -1) mFPS = 30;
     }
 
     @Nullable
@@ -160,5 +166,9 @@ public class Decoder {
 
     public int getRotation() {
         return mRotation;
+    }
+
+    public int getFrameRate() {
+        return mFPS;
     }
 }
