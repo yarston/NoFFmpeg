@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
+#include <string.h>
 
 #define  LOG_TAG    "libyuv2rgb"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -16,7 +17,7 @@
 //#define ONLY_FILL_COLOR
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_convert_1YUV420Planar_1to_1RGBA(JNIEnv *env, jobject obj, jobject bitmap, jobject buff_y) {
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_convert_1YUV420Planar_1to_1RGBA(JNIEnv *env, jclass obj, jobject bitmap, jobject buff_y) {
 
     AndroidBitmapInfo info;
     uint32_t *pixels;
@@ -229,7 +230,7 @@ https://www.pcmag.com/encyclopedia/term/55166/yuv-rgb-conversion-formulas
 
 //Это не оптимизированный метод для рисования RGB изображений поверх YUV420 буффера, как отправная точка для дальнейшей доработки
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawRGBoverYUV(JNIEnv *env, jobject obj, jobject bitmap, jint bx, jint by, jint w, jint h, jint off, jobject buff_) {
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawRGBoverYUV(JNIEnv *env, jclass obj, jobject bitmap, jint bx, jint by, jint w, jint h, jint off, jobject buff_) {
 
     AndroidBitmapInfo info;
     uint32_t *pixels;
@@ -280,7 +281,7 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawRGBoverYUV(JNIEnv *env, 
 }
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Planar(JNIEnv *env, jobject obj, jobject src , jobject dst, jint px, jint py, jint imgw, jint imgh, jint w, jint h) {
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Planar(JNIEnv *env, jclass obj, jobject src , jobject dst, jint px, jint py, jint imgw, jint imgh, jint w, jint h) {
 
     uint8_t *src_y = (*env)->GetDirectBufferAddress(env, src);
 
@@ -338,7 +339,7 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Planar(JNI
 #define GETA(x) (((x >> 24) & 0xFF))
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_bitmapRGBA8888toYUV420Planar(JNIEnv *env, jobject obj, jobject bmp, jobject yuva, jint w, jint h, jboolean toRight, jboolean toBottom) {
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_bitmapRGBA8888toYUV420Planar(JNIEnv *env, jclass obj, jobject bmp, jobject yuva, jint w, jint h, jboolean toRight, jboolean toBottom) {
 
     AndroidBitmapInfo info;
     uint32_t *pixels;
@@ -483,7 +484,7 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_bitmapRGBA8888toYUV420SemiPl
 }
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Semilanar(JNIEnv *env, jobject obj, jobject src , jobject dst, jint px, jint py, jint imgw, jint imgh, jint w, jint h) {
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Semilanar(JNIEnv *env, jclass obj, jobject src , jobject dst, jint px, jint py, jint imgw, jint imgh, jint w, jint h) {
 
     uint8_t *src_y = (*env)->GetDirectBufferAddress(env, src);
     int imgw_half = imgw / 2, imgh_half = imgh / 2;
@@ -527,13 +528,10 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawYUVAoverYUV420Semilanar(
             src_y_line1++;
         }
     }
-
 }
 
-
-
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_copyPicture(JNIEnv *env, jobject obj, jint w, jint h,
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_copyPicture(JNIEnv *env, jclass obj, jint w, jint h,
                                                                 jobject srcBuffY, jint srcRowStrideY, jint srcPixelStrideY,
                                                                 jobject srcBuffU, jint srcRowStrideU, jint srcPixelStrideU,
                                                                 jobject srcBuffV, jint srcRowStrideV, jint srcPixelStrideV,
@@ -549,49 +547,70 @@ Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_copyPicture(JNIEnv *env, job
     uint8_t *src_u = (*env)->GetDirectBufferAddress(env, srcBuffU);
     uint8_t *src_v = (*env)->GetDirectBufferAddress(env, srcBuffV);
 
-   #pragma omp parallel for
-   for(int i = 0; i < h; i += 2) {
+    //если Y значения лежат 1 сплошным куском (а это всегда, наверное, но мало ли), то можно их напрямую скопировать, а UV отдельно обработать
+    if(srcPixelStrideY == 1 && srcRowStrideY == w) {
+        memcpy(dst_y, src_y, w * h);
+        #pragma omp parallel for
+        for(int i = 0; i < h; i += 2) {
+            int hi = i / 2;
+            uint8_t *srcLineU = src_u + hi * srcRowStrideU;
+            uint8_t *srcLineV = src_v + hi * srcRowStrideV;
+            uint8_t *dstLineU = dst_u + hi * dstRowStrideU;
+            uint8_t *dstLineV = dst_v + hi * dstRowStrideV;
 
-       int hi = i / 2;
-       uint8_t *srcLineY0 = src_y + i * srcRowStrideY;
-       uint8_t *srcLineY1 = srcLineY0 + srcRowStrideY;
-       uint8_t *srcLineU = src_u + hi * srcRowStrideU;
-       uint8_t *srcLineV = src_v + hi * srcRowStrideV;
+            for(int j = 0; j < w; j += 2) {
+                *dstLineU = *srcLineU;
+                *dstLineV = *srcLineV;
+                srcLineU += srcPixelStrideU;
+                srcLineV += srcPixelStrideV;
+                dstLineU += dstPixelStrideU;
+                dstLineV += dstPixelStrideV;
+            }
+        }
+    } else {
+        #pragma omp parallel for
+        for (int i = 0; i < h; i += 2) {
+            int hi = i / 2;
+            uint8_t *srcLineY0 = src_y + i * srcRowStrideY;
+            uint8_t *srcLineY1 = srcLineY0 + srcRowStrideY;
+            uint8_t *srcLineU = src_u + hi * srcRowStrideU;
+            uint8_t *srcLineV = src_v + hi * srcRowStrideV;
 
-       uint8_t *dstLineY0 = dst_y + i * dstRowStrideY;
-       uint8_t *dstLineY1 = dstLineY0 + dstRowStrideY;
-       uint8_t *dstLineU = dst_u + hi * dstRowStrideU;
-       uint8_t *dstLineV = dst_v + hi * dstRowStrideV;
+            uint8_t *dstLineY0 = dst_y + i * dstRowStrideY;
+            uint8_t *dstLineY1 = dstLineY0 + dstRowStrideY;
+            uint8_t *dstLineU = dst_u + hi * dstRowStrideU;
+            uint8_t *dstLineV = dst_v + hi * dstRowStrideV;
 
-       for(int j = 0; j < w; j += 2) {
-           *dstLineY0 = *srcLineY0;
-           dstLineY0 += dstPixelStrideY;
-           srcLineY0 += srcPixelStrideY;
+            for (int j = 0; j < w; j += 2) {
+                *dstLineY0 = *srcLineY0;
+                dstLineY0 += dstPixelStrideY;
+                srcLineY0 += srcPixelStrideY;
 
-           *dstLineY0 = *srcLineY0;
-           dstLineY0 += dstPixelStrideY;
-           srcLineY0 += srcPixelStrideY;
+                *dstLineY0 = *srcLineY0;
+                dstLineY0 += dstPixelStrideY;
+                srcLineY0 += srcPixelStrideY;
 
-           *dstLineY1 = *srcLineY1;
-           dstLineY1 += dstPixelStrideY;
-           srcLineY1 += srcPixelStrideY;
+                *dstLineY1 = *srcLineY1;
+                dstLineY1 += dstPixelStrideY;
+                srcLineY1 += srcPixelStrideY;
 
-           *dstLineY1 = *srcLineY1;
-           dstLineY1 += dstPixelStrideY;
-           srcLineY1 += srcPixelStrideY;
+                *dstLineY1 = *srcLineY1;
+                dstLineY1 += dstPixelStrideY;
+                srcLineY1 += srcPixelStrideY;
 
-           *dstLineU = *srcLineU;
-           *dstLineV = *srcLineV;
-           srcLineU += srcPixelStrideU;
-           srcLineV += srcPixelStrideV;
-           dstLineU += dstPixelStrideU;
-           dstLineV += dstPixelStrideV;
-       }
-   }
+                *dstLineU = *srcLineU;
+                *dstLineV = *srcLineV;
+                srcLineU += srcPixelStrideU;
+                srcLineV += srcPixelStrideV;
+                dstLineU += dstPixelStrideU;
+                dstLineV += dstPixelStrideV;
+            }
+        }
+    }
 }
 
 JNIEXPORT void JNICALL
-Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawPicture(JNIEnv *env, jobject obj,
+Java_com_slava_noffmpeg_mediaworkers_VideoProcessor_drawPicture(JNIEnv *env, jclass obj,
                                                                 jobject src, jint px, jint py,
                                                                 jint imgw, jint imgh, jint w,  jint h,
                                                                 jobject dstBuffY, jint dstRowStrideY, jint dstPixelStrideY,
