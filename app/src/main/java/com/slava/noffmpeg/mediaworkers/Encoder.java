@@ -90,7 +90,8 @@ public class Encoder {
         }
     }
 
-    public void initAudioTrack(String path) throws IOException {
+    public boolean initAudioTrack(String path) throws IOException {
+        boolean foundAudioTrack = false;
         extractor = new MediaExtractor();
         extractor.setDataSource(path);
         String seachMime = "audio/";
@@ -100,9 +101,16 @@ public class Encoder {
             if (mime.startsWith(seachMime)) {
                 extractor.selectTrack(i);
                 mAudioTrackIndex = mMuxer.addTrack(format2);
+                foundAudioTrack = true;
                 break;
             }
         }
+        if(!foundAudioTrack) {
+            extractor.release();
+            extractor = null;
+            return false;
+        }
+        return true;
     }
 
     public void writeAudio() {

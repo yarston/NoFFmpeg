@@ -25,7 +25,6 @@ public class Decoder {
     private MediaFormat mFormat;
     public MediaCodec.BufferInfo mInfo;
     private ByteBuffer[] mInputBuffers;
-    private ByteBuffer[] mOutputBuffers;
     private Runnable mCallback;
     private BufferCallback mBufferCallback;
     private boolean mIsReady = false;
@@ -102,7 +101,6 @@ public class Decoder {
         mDecoder.start();
         mInfo = new MediaCodec.BufferInfo();
         mInputBuffers = mDecoder.getInputBuffers();
-        mOutputBuffers = mDecoder.getOutputBuffers();
         mIsReady = true;
         return true;
     }
@@ -145,27 +143,24 @@ public class Decoder {
         ByteBuffer buffer = mInputBuffers[inIndex];
 
         int sampleSize = mExtractor.readSampleData(buffer, 0);
-        if (mExtractor.advance() && sampleSize > 0) {
+        if (sampleSize > 0) {
             mDecoder.queueInputBuffer(inIndex, 0, sampleSize, mExtractor.getSampleTime(), 0);
+            if(!mExtractor.advance()) {
+                mIsReady = false;
+                //return;
+            }
         } else {
             mIsReady = false;
+            return;
         }
 
         int outIndex = mDecoder.dequeueOutputBuffer(mInfo, TIMEOUT_US);
         if ((mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) mIsReady = false;
-        switch (outIndex) {
-            case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
-                mOutputBuffers = mDecoder.getOutputBuffers();
-                break;
-            case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-            case MediaCodec.INFO_TRY_AGAIN_LATER:
-                break;
-            default:
-                if (mInfo.size > 0) {
-                    if(mImageCallback != null) mImageCallback.onImageReady(mDecoder.getOutputImage(outIndex));
-                }
-                if (outIndex >= 0) mDecoder.releaseOutputBuffer(outIndex, false);
-                break;
+        if(outIndex >= 0) {
+            if (mInfo.size > 0) {
+                if(mImageCallback != null) mImageCallback.onImageReady(mDecoder.getOutputImage(outIndex));
+            }
+            mDecoder.releaseOutputBuffer(outIndex, false);
         }
     }
 

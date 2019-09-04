@@ -192,18 +192,20 @@ public class MainActivity extends AppCompatActivity {
             mProcess.setEnabled(false);
         });
 
+        boolean haveAudio = false;
+
         try {
-            mScreenEncoder.initAudioTrack(mFileChooser.getVideoPath());
+            haveAudio = mScreenEncoder.initAudioTrack(mFileChooser.getVideoPath());
         } catch (IOException e) {
             e.printStackTrace();
-            onFail();
+            haveAudio = false;
             return false;
         }
 
         //for(int i = 0; i < 100; i++)decoder.decodeFrame();
         while (decoder.haveFrame()) decoder.decodeFrame();
 
-        mScreenEncoder.writeAudio();
+        if(haveAudio) mScreenEncoder.writeAudio();
 
         try {
             decoder.release();
