@@ -35,7 +35,7 @@ import com.slava.noffmpeg.mediaworkers.Encoder;
 import com.slava.noffmpeg.mediaworkers.Size;
 import com.slava.noffmpeg.mediaworkers.VideoProcessor;
 
-import java.io.File;
+import java.io.IOException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -44,6 +44,7 @@ import butterknife.ButterKnife;
 import lib.folderpicker.FolderPicker;
 
 import static android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface;
+import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.Generic;
 import static com.slava.noffmpeg.VideoPictureFileChooser.DeviceName.None;
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectCodec;
 import static com.slava.noffmpeg.mediaworkers.Encoder.selectColorFormat;
@@ -143,21 +144,22 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(this, FolderPicker.class);
             startActivityForResult(intent, FOLDERPICKER_CODE);
         } else Executors.newSingleThreadExecutor().submit(() -> {
-            if (!processFile2File()) {
+            if (!processFile2File(true)) {
                 runOnUiThread(() -> Toast.makeText(this, "Файл не может быть обработан", Toast.LENGTH_SHORT).show());
             }
         });
     }
 
-    private boolean processFile2File() {
+    private boolean processFile2File(boolean useHw) {
         long startTime = System.currentTimeMillis();
         if (mFileChooser.getVideoPath() == null) return false;
         Decoder decoder = new Decoder(mFileChooser.getVideoPath());
-        decoder.prepare(null);
+        if(!decoder.prepare(null, useHw)) {
+            onFail();
+        }
 
         Size size = decoder.getSize();
         Log.v("Decoder", "mVideoSize = " + size.width + " x " + size.height);
-        File f = new File(mFileChooser.mOutFilePath);
         int frameRate = decoder.getFrameRate();
         Log.v("Decoder", "inputFormat = " + decoder.getFormat());
         MediaFormat outputFormat = decoder.getCodec().getOutputFormat();
@@ -167,7 +169,7 @@ public class MainActivity extends AppCompatActivity {
         Log.v("Decoder", "colorFromat = " + colorFormat);
         Log.v("Decoder", mFileChooser.getStatus());
 
-        mScreenEncoder = new Encoder(f.getPath(), size, frameRate, codecInfo, colorFormat, decoder.getRotation(), false, mSeekBar.getProgress() * BPP_STEP);
+        mScreenEncoder = new Encoder(mFileChooser.mOutFilePath, size, frameRate, codecInfo, colorFormat, decoder.getRotation(), false, mSeekBar.getProgress() * BPP_STEP);
         VideoProcessor processor = new VideoProcessor(mFileChooser.getImagePathes(), size, colorFormat, decoder.getRotation());
 
         AtomicInteger nFrames = new AtomicInteger();
@@ -190,29 +192,52 @@ public class MainActivity extends AppCompatActivity {
             mProcess.setEnabled(false);
         });
 
-         //for(int i = 0; i < 100; i++)decoder.decodeFrame();
+        try {
+            mScreenEncoder.initAudioTrack(mFileChooser.getVideoPath());
+        } catch (IOException e) {
+            e.printStackTrace();
+            onFail();
+            return false;
+        }
+
+        //for(int i = 0; i < 100; i++)decoder.decodeFrame();
         while (decoder.haveFrame()) decoder.decodeFrame();
+
+        mScreenEncoder.writeAudio();
+
         try {
             decoder.release();
             mScreenEncoder.release();
         } catch (Exception e) {
+            onFail();
             e.printStackTrace();
+            return false;
         }
 
-        int finalColorFormat = colorFormat;
-        runOnUiThread(() -> {
-            if(nFrames.get() > 0) {
+        if (nFrames.get() > 0) {
+            runOnUiThread(() -> {
                 mStatus.setText(String.format("completed %d frames (%dx%d) in %.2f sec, colorformat=%d",
-                        nFrames.get(), size.width, size.height, (System.currentTimeMillis() - startTime) * 0.001f, finalColorFormat));
-            } else {
-                mStatus.setText("файл не может быть обработан");
-            }
+                        nFrames.get(), size.width, size.height, (System.currentTimeMillis() - startTime) * 0.001f, colorFormat));
+
+                mChooseVideo.setEnabled(true);
+                mChooseImages.setEnabled(true);
+                mProcess.setEnabled(true);
+                mProgress.setProgress(mProgress.getMax());
+            });
+        } else {
+            onFail();
+        }
+        return nFrames.get() > 0;
+    }
+
+    private void onFail() {
+        runOnUiThread(() -> {
+            mStatus.setText("файл не может быть обработан");
             mChooseVideo.setEnabled(true);
             mChooseImages.setEnabled(true);
             mProcess.setEnabled(true);
             mProgress.setProgress(mProgress.getMax());
         });
-        return nFrames.get() > 0;
     }
 
     private void drain() {

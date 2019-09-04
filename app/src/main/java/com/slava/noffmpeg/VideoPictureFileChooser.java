@@ -35,7 +35,8 @@ class VideoPictureFileChooser {
         mOutFilePath = hs + "rendered.mp4";
         mPauseFile = hs + "pause.mp4";
         //mVideoFilePath = hs + "VID_20190816_133439.mp4";
-        mVideoFilePath = hs + "VID-20190711-WA0000.mp4";
+        //mVideoFilePath = hs + "VID-20190711-WA0000.mp4";
+        mVideoFilePath = hs + "VID_20190617_114140.mp4";
         mImageFilePathes.add(hs + "giphy.gif");
         mImageFilePathes.add(hs + "i.jpg");
     }

@@ -87,12 +87,13 @@ public class Decoder {
         return mFormat;
     }
 
-    public boolean prepare(Surface surface) {
+    public boolean prepare(Surface surface, boolean useHw) {
         if (mFormat == null) return false;
         try {
-            mDecoder = MediaCodec.createDecoderByType(mFormat.getString(MediaFormat.KEY_MIME));
-        } catch (IOException e) {
+            mDecoder = createDecoder(mFormat.getString(MediaFormat.KEY_MIME), useHw);
+        } catch (Exception e) {
             e.printStackTrace();
+            mDecoder = null;
             return false;
         }
         //mFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, 21);
@@ -104,6 +105,21 @@ public class Decoder {
         mOutputBuffers = mDecoder.getOutputBuffers();
         mIsReady = true;
         return true;
+    }
+
+    private MediaCodec createDecoder(String mime, boolean useHw) throws Exception {
+        if (!useHw) {
+            if (mime.contains("avc")) {
+                return MediaCodec.createByCodecName("OMX.google.h264.decoder");
+            } else if (mime.contains("3gpp")) {
+                return MediaCodec.createByCodecName("OMX.google.h263.decoder");
+            } else if (mime.contains("mp4v")) {
+                return MediaCodec.createByCodecName("OMX.google.mpeg4.decoder");
+            } else if (mime.contains("vp8")) {
+                return MediaCodec.createByCodecName("OMX.google.vpx.decoder");
+            }
+        }
+        return MediaCodec.createDecoderByType(mime);
     }
 
     public void setCallback(Runnable callback) {

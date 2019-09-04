@@ -29,16 +29,17 @@ public class VideoFramesProvider extends FramesProvider {
      * @param width ширина видео, к которому будет применяться
      * @param height высота видео, к которому будет применяться
      * @param bpp Бит на пиксель - задаёт качество
+     * @param useHw
      */
 
-    VideoFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded, int rotation) {
+    VideoFramesProvider(String path, int width, int height, int colorFormat, float bpp, boolean encoded, int rotation, boolean useHw) {
         mWidth = width;
         mHeight = height;
         mEncoded = encoded;
         mColorFormat = colorFormat;
         mRotation = rotation;
         mDecoder = new Decoder(path);
-        mDecoder.prepare(null);
+        mDecoder.prepare(null, useHw);
         mDecoder.setCallback(() -> {
             if(mBufferBitmap == null) mBufferBitmap = Bitmap.createBitmap(mDecoder.getSize().width, mDecoder.getSize().height, Bitmap.Config.ARGB_8888);
             switch (colorFormat) {

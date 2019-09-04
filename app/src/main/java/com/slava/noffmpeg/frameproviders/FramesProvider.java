@@ -43,7 +43,7 @@ public abstract class FramesProvider {
                 case "gif":
                     return new GifFramesProvider(path, width, height, colorFormat, bpp, encoded, rotation);
                 case "mp4":
-                    return new VideoFramesProvider(path, width, height, colorFormat, bpp, encoded, rotation);
+                    return new VideoFramesProvider(path, width, height, colorFormat, bpp, encoded, rotation, true);
             }
         }
         return null;

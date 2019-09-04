@@ -4,6 +4,7 @@ import android.media.Image;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
+import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
 import android.os.Bundle;
@@ -26,10 +27,14 @@ import static com.slava.noffmpeg.mediaworkers.VideoProcessor.copyPicture;
 
 public class Encoder {
 
+    private static final int MAX_SAMPLE_SIZE = 256 * 1024;
+    private static final int AUDIO_BUFF_SIZE = 16384;
+
     public static final int TIMEOUT_US = 10000;
     private final int mWidth;
     private final int mHeight;
     private int mVideoTrackIndex = -1;
+    private int mAudioTrackIndex = -1;
     private MediaMuxer mMuxer = null;
     private long mFramesEncoded = 0;
     private int mFrameRate;
@@ -40,8 +45,7 @@ public class Encoder {
     private Surface mSurface;
     private final MediaCodec.BufferInfo mInfo = new MediaCodec.BufferInfo();
     private static final boolean DEBUG = true;
-    private int mInIndex;
-    private long mLastTime;
+    private MediaExtractor extractor;
 
 
     //Нужно запилить паузу. Варианты:
@@ -84,6 +88,52 @@ public class Encoder {
         } catch (IOException e) {
             if(DEBUG) e.printStackTrace();
         }
+    }
+
+    public void initAudioTrack(String path) throws IOException {
+        extractor = new MediaExtractor();
+        extractor.setDataSource(path);
+        String seachMime = "audio/";
+        for (int i = 0; i < extractor.getTrackCount(); i++) {
+            MediaFormat format2 = extractor.getTrackFormat(i);
+            String mime = format2.getString(MediaFormat.KEY_MIME);
+            if (mime.startsWith(seachMime)) {
+                extractor.selectTrack(i);
+                mAudioTrackIndex = mMuxer.addTrack(format2);
+                break;
+            }
+        }
+    }
+
+    public void writeAudio() {
+        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+        ByteBuffer buffer = ByteBuffer.allocate(AUDIO_BUFF_SIZE);
+
+        int nRiddenSamples = 0;
+        while (true) {
+            buffer.clear();
+            int sampleSize = extractor.readSampleData(buffer, 0);
+            int flags = extractor.getSampleFlags();
+            if (sampleSize <= 0 || flags < 0) break;
+
+            nRiddenSamples++;
+            bufferInfo.offset = 0;
+            bufferInfo.size = sampleSize;
+            bufferInfo.presentationTimeUs = extractor.getSampleTime();
+            bufferInfo.flags = flags;
+            buffer.position(0);
+            buffer.limit(sampleSize);
+
+            Log.d("Encoder", "Frame (" + nRiddenSamples + ") " +
+                    "PresentationTimeUs:" + bufferInfo.presentationTimeUs +
+                    " Flags:" + bufferInfo.flags +
+                    " TrackIndex:" + extractor.getSampleTrackIndex() +
+                    " Size(b) " + bufferInfo.size);
+
+            mMuxer.writeSampleData(mAudioTrackIndex, buffer, bufferInfo);
+            if (!extractor.advance()) break;
+        }
+        Log.v("Decoder", "nRiddenSamples:" + nRiddenSamples);
     }
 
     /**
